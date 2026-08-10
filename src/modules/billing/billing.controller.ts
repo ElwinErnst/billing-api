@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
@@ -79,6 +80,9 @@ export class BillingController {
     return this.billingService.scheduleCancellation(auth);
   }
 
+  // Payment-provider webhooks must never be rate-limited: dropping a delivery
+  // loses a billing event.
+  @SkipThrottle()
   @Post('webhooks/stripe')
   async handleStripeWebhook(
     @Req() req: Request & { rawBody?: Buffer },
@@ -87,6 +91,7 @@ export class BillingController {
     return this.billingService.handleStripeWebhook(req.rawBody, signature);
   }
 
+  @SkipThrottle()
   @Post('webhooks/mercadopago')
   async handleMercadoPagoWebhook(
     @Query('data.id') dataId: string | undefined,
