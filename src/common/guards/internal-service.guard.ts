@@ -3,10 +3,12 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createHash, createHmac, timingSafeEqual } from 'crypto';
-import type { Request } from 'express';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
+import type { Request } from "express";
+
+import { ReplayNonceService } from "../replay/replay-nonce.service";
 
 function constantTimeEquals(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
@@ -20,7 +22,7 @@ function constantTimeEquals(left: string, right: string): boolean {
 }
 
 function sha256Hex(input: string): string {
-  return createHash('sha256').update(input).digest('hex');
+  return createHash("sha256").update(input).digest("hex");
 }
 
 function canonicalizeInternalRequest(input: {
@@ -36,64 +38,51 @@ function canonicalizeInternalRequest(input: {
     input.bodySha256Hex,
     input.tsMs,
     input.nonce,
-  ].join('\n');
+  ].join("\n");
 }
 
 @Injectable()
 export class InternalServiceGuard implements CanActivate {
-  private readonly replayCache = new Map<string, number>();
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly replay: ReplayNonceService,
+  ) {}
 
-  constructor(private readonly configService: ConfigService) {}
-
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
-    const provided = req.header('x-internal-service-secret');
-    const expected = this.configService.get<string>('internal.serviceSecret');
-    const hmacSecret = this.configService.get<string>('internal.hmacSecret');
-    const tsHeader = req.header('x-internal-service-ts');
-    const nonce = req.header('x-internal-service-nonce');
-    const signature = req.header('x-internal-service-signature');
+    const provided = req.header("x-internal-service-secret");
+    const expected = this.configService.get<string>("internal.serviceSecret");
+    const hmacSecret = this.configService.get<string>("internal.hmacSecret");
+    const tsHeader = req.header("x-internal-service-ts");
+    const nonce = req.header("x-internal-service-nonce");
+    const signature = req.header("x-internal-service-signature");
     const maxClockSkewMs =
-      this.configService.get<number>('internal.maxClockSkewMs') ?? 30_000;
+      this.configService.get<number>("internal.maxClockSkewMs") ?? 30_000;
 
     if (!expected || !provided || !constantTimeEquals(provided, expected)) {
-      throw new ForbiddenException('Invalid internal service secret');
+      throw new ForbiddenException("Invalid internal service secret");
     }
 
     if (!hmacSecret || !tsHeader || !nonce || !signature) {
-      throw new ForbiddenException('Missing internal request signature');
+      throw new ForbiddenException("Missing internal request signature");
     }
 
     const tsMs = Number(tsHeader);
     if (!Number.isFinite(tsMs)) {
-      throw new ForbiddenException('Invalid internal request timestamp');
+      throw new ForbiddenException("Invalid internal request timestamp");
     }
 
     if (Math.abs(Date.now() - tsMs) > maxClockSkewMs) {
-      throw new ForbiddenException('Internal request timestamp expired');
-    }
-
-    const replayKey = `${tsHeader}:${nonce}`;
-    const now = Date.now();
-    const expiresAt = now + maxClockSkewMs;
-
-    for (const [key, expiry] of this.replayCache) {
-      if (expiry <= now) {
-        this.replayCache.delete(key);
-      }
-    }
-
-    if (this.replayCache.has(replayKey)) {
-      throw new ForbiddenException('Internal request replay detected');
+      throw new ForbiddenException("Internal request timestamp expired");
     }
 
     const rawBody =
       req.body == null
-        ? ''
-        : typeof req.body === 'string'
+        ? ""
+        : typeof req.body === "string"
           ? req.body
           : JSON.stringify(req.body);
-    const pathWithQuery = req.originalUrl ?? req.url ?? '/';
+    const pathWithQuery = req.originalUrl ?? req.url ?? "/";
     const bodySha256Hex = sha256Hex(rawBody);
     const canonical = canonicalizeInternalRequest({
       method: req.method,
@@ -102,15 +91,22 @@ export class InternalServiceGuard implements CanActivate {
       tsMs: tsHeader,
       nonce,
     });
-    const expectedSignature = createHmac('sha256', hmacSecret)
+    const expectedSignature = createHmac("sha256", hmacSecret)
       .update(canonical)
-      .digest('hex');
+      .digest("hex");
 
     if (!constantTimeEquals(signature, expectedSignature)) {
-      throw new ForbiddenException('Invalid internal request signature');
+      throw new ForbiddenException("Invalid internal request signature");
     }
 
-    this.replayCache.set(replayKey, expiresAt);
+    // Only after the signature is verified do we record the nonce. Atomic
+    // insert: a false return means the key already existed → replay.
+    const replayKey = `${tsHeader}:${nonce}`;
+    const expiresAt = new Date(Date.now() + maxClockSkewMs);
+    const fresh = await this.replay.checkAndRecord(replayKey, expiresAt);
+    if (!fresh) {
+      throw new ForbiddenException("Internal request replay detected");
+    }
 
     return true;
   }
