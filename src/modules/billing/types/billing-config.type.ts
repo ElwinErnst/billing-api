@@ -6,6 +6,7 @@ export type BillingConfig = {
   closeDuePeriodsIntervalMs: number;
   mercadopagoAccessToken: string;
   mercadopagoPublicKey: string;
+  mercadopagoWebhookSecret: string;
   mercadopagoApiBaseUrl: string;
   mercadopagoCurrency: string;
   stripeSecretKey: string;
