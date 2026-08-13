@@ -14,6 +14,7 @@ export default registerAs('billing', () => ({
   ),
   mercadopagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN ?? '',
   mercadopagoPublicKey: process.env.MERCADOPAGO_PUBLIC_KEY ?? '',
+  mercadopagoWebhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET ?? '',
   mercadopagoApiBaseUrl: process.env.MERCADOPAGO_API_BASE_URL ?? 'https://api.mercadopago.com',
   mercadopagoCurrency: (process.env.MERCADOPAGO_CURRENCY ?? 'ARS').toUpperCase(),
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',

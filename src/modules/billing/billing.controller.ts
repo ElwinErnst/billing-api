@@ -98,10 +98,14 @@ export class BillingController {
     @Query('id') id: string | undefined,
     @Query('type') type: string | undefined,
     @Query('topic') topic: string | undefined,
+    @Headers('x-signature') signature?: string,
+    @Headers('x-request-id') requestId?: string,
   ) {
     return this.billingService.handleMercadoPagoWebhook({
       dataId: dataId ?? id,
       topic: type ?? topic,
+      signature,
+      requestId,
     });
   }
 

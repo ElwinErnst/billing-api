@@ -2,13 +2,14 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 import Stripe from 'stripe';
 import { Repository } from 'typeorm';
@@ -32,6 +33,7 @@ import type { BillingConfig } from './types/billing-config.type';
 
 @Injectable()
 export class BillingService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(BillingService.name);
   private stripeClient: Stripe | null = null;
   private mercadoPagoClient: MercadoPagoConfig | null = null;
   private mercadoPagoPaymentClient: Payment | null = null;
@@ -391,10 +393,17 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   async handleMercadoPagoWebhook(input: {
     dataId?: string;
     topic?: string;
+    signature?: string;
+    requestId?: string;
   }) {
     if (this.billing.provider !== 'mercadopago') {
       return { ok: true, ignored: true, reason: 'provider_not_mercadopago' };
     }
+
+    // Authenticate the notification. This endpoint is unauthenticated and
+    // un-throttled (deliveries must not be dropped), so the signature is the
+    // only thing standing between a stranger and triggering payment syncs.
+    this.assertValidMercadoPagoSignature(input);
 
     if (input.topic && input.topic !== 'payment') {
       return { ok: true, ignored: true, reason: 'unsupported_topic' };
@@ -406,6 +415,56 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
     await this.synchronizeMercadoPagoPayment(input.dataId);
     return { ok: true };
+  }
+
+  /**
+   * Verify Mercado Pago's `x-signature` HMAC over the manifest
+   * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`. Enforced only when a
+   * webhook secret is configured; otherwise we log once and proceed so
+   * environments that haven't set it yet keep working (payments are still
+   * re-fetched authoritatively from the MP API downstream).
+   */
+  private assertValidMercadoPagoSignature(input: {
+    dataId?: string;
+    signature?: string;
+    requestId?: string;
+  }): void {
+    const secret = this.billing.mercadopagoWebhookSecret;
+    if (!secret) {
+      this.logger.warn(
+        'MERCADOPAGO_WEBHOOK_SECRET is not set — webhook signature verification is DISABLED.',
+      );
+      return;
+    }
+
+    if (!input.signature || !input.requestId || !input.dataId) {
+      throw new ForbiddenException('Missing Mercado Pago webhook signature');
+    }
+
+    const parts = Object.fromEntries(
+      input.signature.split(',').map((kv) => {
+        const [k, v] = kv.split('=');
+        return [k?.trim(), v?.trim()];
+      }),
+    );
+    const ts = parts['ts'];
+    const v1 = parts['v1'];
+    if (!ts || !v1) {
+      throw new ForbiddenException('Malformed Mercado Pago webhook signature');
+    }
+
+    // MP lowercases the id in the manifest when it is alphanumeric.
+    const id = input.dataId.toLowerCase();
+    const manifest = `id:${id};request-id:${input.requestId};ts:${ts};`;
+    const expected = createHmac('sha256', secret)
+      .update(manifest)
+      .digest('hex');
+
+    const a = Buffer.from(expected);
+    const b = Buffer.from(v1);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new ForbiddenException('Invalid Mercado Pago webhook signature');
+    }
   }
 
   async handleMercadoPagoReturn(input: {

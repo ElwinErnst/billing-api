@@ -15,6 +15,8 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access') 
       issuer: auth.issuer,
       audience: auth.audience,
       ignoreExpiration: false,
+      // Pin the algorithm; auth issues HS256 only.
+      algorithms: ['HS256'],
     });
   }
 
