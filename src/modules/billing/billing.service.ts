@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -24,8 +25,10 @@ import {
   BillingTierCode,
 } from './billing.catalog';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
 import { RecordUsageEventDto } from './dto/record-usage-event.dto';
 import { BillingCustomerEntity } from './entities/billing-customer.entity';
+import { BillingPaymentIntentEntity } from './entities/billing-payment-intent.entity';
 import { BillingPeriodCloseEntity } from './entities/billing-period-close.entity';
 import { BillingSubscriptionEntity } from './entities/billing-subscription.entity';
 import { BillingUsageEventEntity } from './entities/billing-usage-event.entity';
@@ -49,6 +52,8 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     private readonly subscriptionsRepo: Repository<BillingSubscriptionEntity>,
     @InjectRepository(BillingUsageEventEntity)
     private readonly usageEventsRepo: Repository<BillingUsageEventEntity>,
+    @InjectRepository(BillingPaymentIntentEntity)
+    private readonly paymentIntentsRepo: Repository<BillingPaymentIntentEntity>,
     private readonly configService: ConfigService,
     private readonly authDirectory: AuthDirectoryService,
   ) {}
@@ -220,6 +225,147 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       addOns,
       customer,
     );
+  }
+
+  /**
+   * Create a single, non-recurring payment for a standalone consumer app.
+   * Unlike createCheckoutSession this has no plan/cycle/seats: the caller sends
+   * arbitrary line items plus a passthrough reference that is round-tripped back
+   * on the outbound webhook (phase 2). The provider token never leaves Sytadel.
+   */
+  async createOneOffCheckout(
+    auth: AccessTokenPayload,
+    dto: CreateOneOffCheckoutDto,
+  ) {
+    const provider = dto.provider ?? this.resolveOneOffProvider();
+    const currency = (
+      dto.currency ?? this.billing.mercadopagoCurrency
+    ).toUpperCase();
+    const amountCents = dto.items.reduce(
+      (sum, item) => sum + item.amountCents * (item.quantity ?? 1),
+      0,
+    );
+
+    if (amountCents <= 0) {
+      throw new BadRequestException(
+        'One-off checkout total must be greater than zero',
+      );
+    }
+
+    const intent = await this.paymentIntentsRepo.save(
+      this.paymentIntentsRepo.create({
+        tenantId: auth.tenantId,
+        provider,
+        status: 'PENDING',
+        amountCents,
+        currency,
+        description: dto.description ?? null,
+        externalReference: dto.externalReference ?? null,
+        metadata: dto.metadata ?? null,
+        webhookUrl: dto.webhookUrl ?? null,
+      }),
+    );
+
+    if (provider === 'mercadopago') {
+      return this.createMercadoPagoOneOff(auth, dto, intent, currency);
+    }
+
+    return this.createMockOneOff(intent);
+  }
+
+  private resolveOneOffProvider(): 'mercadopago' | 'mock' {
+    // Stripe one-off is a later phase; MercadoPago is the pilot wedge.
+    return this.billing.provider === 'mercadopago' ? 'mercadopago' : 'mock';
+  }
+
+  private async createMercadoPagoOneOff(
+    auth: AccessTokenPayload,
+    dto: CreateOneOffCheckoutDto,
+    intent: BillingPaymentIntentEntity,
+    currency: string,
+  ) {
+    const defaultReturnUrl = `${this.billing.publicBaseUrl}/billing/checkout/mercadopago/return`;
+    const successUrl = dto.successUrl ?? defaultReturnUrl;
+    const failureUrl = dto.failureUrl ?? defaultReturnUrl;
+    const pendingUrl = dto.pendingUrl ?? defaultReturnUrl;
+    const hasPublicReturnUrl = this.isPublicCallbackUrl(successUrl);
+    const notificationUrl = `${this.billing.publicBaseUrl}/billing/webhooks/mercadopago`;
+    const hasPublicWebhookUrl = this.isPublicCallbackUrl(notificationUrl);
+    const preferenceClient = this.getMercadoPagoPreference();
+
+    let preference;
+    try {
+      preference = await preferenceClient.create({
+        body: {
+          external_reference: intent.id,
+          ...(hasPublicWebhookUrl
+            ? { notification_url: notificationUrl }
+            : {}),
+          ...(dto.payerEmail ? { payer: { email: dto.payerEmail } } : {}),
+          ...(hasPublicReturnUrl
+            ? {
+                auto_return: 'approved',
+                back_urls: {
+                  success: successUrl,
+                  failure: failureUrl,
+                  pending: pendingUrl,
+                },
+              }
+            : {}),
+          metadata: {
+            tenantId: auth.tenantId,
+            paymentIntentId: intent.id,
+            kind: 'one_off',
+            externalReference: intent.externalReference,
+            ...(intent.metadata ?? {}),
+          },
+          items: dto.items.map((item, index) => ({
+            id: `item-${index + 1}`,
+            title: item.title,
+            quantity: item.quantity ?? 1,
+            currency_id: currency,
+            unit_price: Number((item.amountCents / 100).toFixed(2)),
+          })),
+        },
+      });
+    } catch (error) {
+      intent.status = 'REJECTED';
+      await this.paymentIntentsRepo.save(intent);
+      throw new InternalServerErrorException(
+        `Mercado Pago preference creation failed: ${this.readProviderError(error)}`,
+      );
+    }
+
+    intent.providerPreferenceId = preference.id ?? null;
+    intent.checkoutUrl =
+      preference.sandbox_init_point ?? preference.init_point ?? null;
+    await this.paymentIntentsRepo.save(intent);
+
+    if (!intent.checkoutUrl) {
+      throw new InternalServerErrorException(
+        'Mercado Pago checkout URL was not returned',
+      );
+    }
+
+    return this.toOneOffResponse(intent);
+  }
+
+  private async createMockOneOff(intent: BillingPaymentIntentEntity) {
+    intent.checkoutUrl = `${this.billing.publicBaseUrl}/billing/checkout/mock/one-off/${intent.id}`;
+    await this.paymentIntentsRepo.save(intent);
+    return this.toOneOffResponse(intent);
+  }
+
+  private toOneOffResponse(intent: BillingPaymentIntentEntity) {
+    return {
+      provider: intent.provider,
+      paymentIntentId: intent.id,
+      status: intent.status,
+      amountCents: intent.amountCents,
+      currency: intent.currency,
+      checkoutUrl: intent.checkoutUrl,
+      externalReference: intent.externalReference,
+    };
   }
 
   async scheduleCancellation(auth: AccessTokenPayload) {
