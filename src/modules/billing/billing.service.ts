@@ -32,6 +32,7 @@ import { BillingPaymentIntentEntity } from './entities/billing-payment-intent.en
 import { BillingPeriodCloseEntity } from './entities/billing-period-close.entity';
 import { BillingSubscriptionEntity } from './entities/billing-subscription.entity';
 import { BillingUsageEventEntity } from './entities/billing-usage-event.entity';
+import { OutboundWebhookService } from './outbound-webhook.service';
 import type { BillingConfig } from './types/billing-config.type';
 
 @Injectable()
@@ -56,6 +57,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     private readonly paymentIntentsRepo: Repository<BillingPaymentIntentEntity>,
     private readonly configService: ConfigService,
     private readonly authDirectory: AuthDirectoryService,
+    private readonly outboundWebhooks: OutboundWebhookService,
   ) {}
 
   onModuleInit() {
@@ -1185,6 +1187,9 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       where: { id: localSubscriptionId },
     });
     if (!subscription) {
+      // The external_reference slot is shared: when it is not a subscription it
+      // may be a one-off payment intent (standalone consumer flow).
+      await this.reconcileOneOffPaymentIntent(localSubscriptionId, payment);
       return null;
     }
 
@@ -1208,6 +1213,60 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     }
 
     return subscription;
+  }
+
+  /**
+   * Reconcile a one-off payment intent against the authoritative provider state
+   * and, on the first transition into a terminal state, notify the consumer app
+   * via a signed outbound webhook. Idempotent: the stored status guards against
+   * re-firing when the provider re-delivers a webhook for an already-settled
+   * payment.
+   */
+  private async reconcileOneOffPaymentIntent(
+    intentId: string,
+    payment: { id?: number | string; status?: string | null },
+  ) {
+    const intent = await this.paymentIntentsRepo.findOne({
+      where: { id: intentId },
+    });
+    if (!intent) {
+      return;
+    }
+
+    const wasTerminal =
+      intent.status === 'APPROVED' ||
+      intent.status === 'REJECTED' ||
+      intent.status === 'CANCELLED';
+
+    intent.provider = 'mercadopago';
+    intent.providerPaymentId = payment.id
+      ? String(payment.id)
+      : intent.providerPaymentId;
+    intent.status = this.mapMercadoPagoIntentStatus(payment.status);
+    await this.paymentIntentsRepo.save(intent);
+
+    const nowTerminal =
+      intent.status === 'APPROVED' || intent.status === 'REJECTED';
+    if (!wasTerminal && nowTerminal) {
+      await this.outboundWebhooks.deliverPaymentEvent(intent);
+    }
+  }
+
+  private mapMercadoPagoIntentStatus(
+    status: string | null | undefined,
+  ): BillingPaymentIntentEntity['status'] {
+    switch (status) {
+      case 'approved':
+        return 'APPROVED';
+      case 'rejected':
+      case 'refunded':
+      case 'charged_back':
+        return 'REJECTED';
+      case 'cancelled':
+        return 'CANCELLED';
+      default:
+        return 'PENDING';
+    }
   }
 
   private async enforceSubscriptionStanding(

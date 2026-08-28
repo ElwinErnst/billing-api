@@ -17,6 +17,10 @@ export default registerAs('billing', () => ({
   mercadopagoWebhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET ?? '',
   mercadopagoApiBaseUrl: process.env.MERCADOPAGO_API_BASE_URL ?? 'https://api.mercadopago.com',
   mercadopagoCurrency: (process.env.MERCADOPAGO_CURRENCY ?? 'ARS').toUpperCase(),
+  // Shared secret used to sign outbound webhooks to consumer apps. When empty,
+  // outbound delivery is skipped (never send an event a consumer can't verify).
+  // Phase 4 (self-serve API keys) will move this to per-tenant secrets.
+  outboundWebhookSecret: process.env.BILLING_OUTBOUND_WEBHOOK_SECRET ?? '',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
