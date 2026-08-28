@@ -18,6 +18,7 @@ import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
 import { BillingService } from './billing.service';
 
 @Controller('billing')
@@ -72,6 +73,15 @@ export class BillingController {
     @Body() dto: CreateCheckoutSessionDto,
   ) {
     return this.billingService.createCheckoutSession(auth, dto);
+  }
+
+  @Post('one-off-checkout')
+  @UseGuards(AccessJwtGuard)
+  createOneOffCheckout(
+    @CurrentAuth() auth: AccessTokenPayload,
+    @Body() dto: CreateOneOffCheckoutDto,
+  ) {
+    return this.billingService.createOneOffCheckout(auth, dto);
   }
 
   @Post('subscription/cancel')
