@@ -9,6 +9,7 @@ export type BillingConfig = {
   mercadopagoWebhookSecret: string;
   mercadopagoApiBaseUrl: string;
   mercadopagoCurrency: string;
+  outboundWebhookSecret: string;
   stripeSecretKey: string;
   stripeWebhookSecret: string;
   stripePublishableKey: string;

@@ -11,6 +11,7 @@ import { BillingSubscriptionEntity } from "./entities/billing-subscription.entit
 import { BillingUsageEventEntity } from "./entities/billing-usage-event.entity";
 import { BillingController } from "./billing.controller";
 import { BillingService } from "./billing.service";
+import { OutboundWebhookService } from "./outbound-webhook.service";
 
 @Module({
   imports: [
@@ -24,7 +25,12 @@ import { BillingService } from "./billing.service";
     ReplayModule,
   ],
   controllers: [BillingController, BillingInternalController],
-  providers: [BillingService, AuthDirectoryService, InternalServiceGuard],
+  providers: [
+    BillingService,
+    OutboundWebhookService,
+    AuthDirectoryService,
+    InternalServiceGuard,
+  ],
   exports: [BillingService],
 })
 export class BillingModule {}
