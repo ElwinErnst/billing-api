@@ -15,6 +15,7 @@ import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 import Stripe from 'stripe';
 import { Repository } from 'typeorm';
 import { verifyMercadoPagoSignature } from './mercadopago-signature';
+import { resolveSubscriptionRenewal } from './subscription-renewal';
 import { AuthDirectoryService } from '../../common/modules/auth-directory/auth-directory.service';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import {
@@ -1167,13 +1168,24 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
+    // Capture pre-mutation state so we can detect a replayed payment.
+    const previousStatus = subscription.status;
+    const lastAppliedPaymentId = subscription.providerSubscriptionId;
+    const incomingPaymentId = payment.id ? String(payment.id) : null;
+
     subscription.provider = 'mercadopago';
-    subscription.providerSubscriptionId = payment.id ? String(payment.id) : null;
+    subscription.providerSubscriptionId = incomingPaymentId;
     subscription.status = this.mapMercadoPagoStatus(paymentStatus);
-    subscription.currentPeriodEndsAt =
-      subscription.status === 'ACTIVE'
-        ? this.buildPeriodEnd(subscription.billingCycle)
-        : subscription.currentPeriodEndsAt;
+    // Idempotent + monotonic: re-applying the same payment id does not extend
+    // the period again, and a genuine renewal stacks from max(now, periodEnd).
+    subscription.currentPeriodEndsAt = resolveSubscriptionRenewal({
+      mappedStatus: subscription.status,
+      incomingPaymentId,
+      previousStatus,
+      lastAppliedPaymentId,
+      currentPeriodEndsAt: subscription.currentPeriodEndsAt,
+      billingCycle: subscription.billingCycle,
+    }).periodEndsAt;
     subscription.activatedAt =
       subscription.status === 'ACTIVE'
         ? payment.date_approved
