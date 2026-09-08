@@ -10,10 +10,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { randomUUID } from 'crypto';
 import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 import Stripe from 'stripe';
 import { Repository } from 'typeorm';
+import { verifyMercadoPagoSignature } from './mercadopago-signature';
 import { AuthDirectoryService } from '../../common/modules/auth-directory/auth-directory.service';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import {
@@ -585,34 +586,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    if (!input.signature || !input.requestId || !input.dataId) {
-      throw new ForbiddenException('Missing Mercado Pago webhook signature');
-    }
-
-    const parts = Object.fromEntries(
-      input.signature.split(',').map((kv) => {
-        const [k, v] = kv.split('=');
-        return [k?.trim(), v?.trim()];
-      }),
-    );
-    const ts = parts['ts'];
-    const v1 = parts['v1'];
-    if (!ts || !v1) {
-      throw new ForbiddenException('Malformed Mercado Pago webhook signature');
-    }
-
-    // MP lowercases the id in the manifest when it is alphanumeric.
-    const id = input.dataId.toLowerCase();
-    const manifest = `id:${id};request-id:${input.requestId};ts:${ts};`;
-    const expected = createHmac('sha256', secret)
-      .update(manifest)
-      .digest('hex');
-
-    const a = Buffer.from(expected);
-    const b = Buffer.from(v1);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      throw new ForbiddenException('Invalid Mercado Pago webhook signature');
-    }
+    verifyMercadoPagoSignature(input, secret);
   }
 
   async handleMercadoPagoReturn(input: {

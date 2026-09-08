@@ -6,8 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  build:
-    name: build
+  test:
+    name: build & tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,3 +22,6 @@ jobs:
 
       - name: Build (typecheck)
         run: yarn build
+
+      - name: Unit tests
+        run: yarn test
