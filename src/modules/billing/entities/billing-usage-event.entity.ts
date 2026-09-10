@@ -36,6 +36,9 @@ export class BillingUsageEventEntity {
   @Column({ name: 'client_app_id', type: 'uuid', nullable: true })
   clientAppId!: string | null;
 
+  @Column({ name: 'environment_id', type: 'uuid', nullable: true })
+  environmentId!: string | null;
+
   @Column({ name: 'service_account_id', type: 'uuid', nullable: true })
   serviceAccountId!: string | null;
 

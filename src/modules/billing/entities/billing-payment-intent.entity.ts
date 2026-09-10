@@ -28,6 +28,15 @@ export class BillingPaymentIntentEntity {
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId!: string;
 
+  // Ownership below the tenant (auth-api ClientApp / Environment). Nullable:
+  // legacy rows and user-token flows are tenant-level (null).
+  @Index()
+  @Column({ name: 'client_app_id', type: 'uuid', nullable: true })
+  clientAppId!: string | null;
+
+  @Column({ name: 'environment_id', type: 'uuid', nullable: true })
+  environmentId!: string | null;
+
   @Column({ name: 'provider', type: 'varchar', length: 30, default: 'mock' })
   provider!: string;
 

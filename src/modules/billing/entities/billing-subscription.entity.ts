@@ -13,6 +13,16 @@ export class BillingSubscriptionEntity {
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId!: string;
 
+  // Ownership below the tenant. Nullable: the tenant's own Sytadel plan
+  // (domain A, dashboard) stays tenant-level (null); populated for
+  // app-scoped subscriptions.
+  @Index()
+  @Column({ name: 'client_app_id', type: 'uuid', nullable: true })
+  clientAppId!: string | null;
+
+  @Column({ name: 'environment_id', type: 'uuid', nullable: true })
+  environmentId!: string | null;
+
   @Column({ name: 'provider', type: 'varchar', length: 30, default: 'mock' })
   provider!: string;
 

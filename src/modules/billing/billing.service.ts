@@ -259,6 +259,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const intent = await this.paymentIntentsRepo.save(
       this.paymentIntentsRepo.create({
         tenantId: auth.tenantId,
+        ...this.ownershipFrom(auth),
         provider,
         status: 'PENDING',
         amountCents,
@@ -435,6 +436,20 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * App/environment ownership derived from the caller's token. Null for
+   * user/dashboard tokens (tenant-level) — those simply omit the claims.
+   */
+  private ownershipFrom(auth: AccessTokenPayload): {
+    clientAppId: string | null;
+    environmentId: string | null;
+  } {
+    return {
+      clientAppId: auth.clientAppId ?? null,
+      environmentId: auth.environmentId ?? null,
+    };
+  }
+
   async recordUsageEvent(dto: RecordUsageEventDto) {
     const event = this.usageEventsRepo.create({
       tenantId: dto.tenantId,
@@ -444,6 +459,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       sourceService: dto.sourceService,
       actorType: dto.actorType ?? null,
       clientAppId: dto.clientAppId ?? null,
+      environmentId: dto.environmentId ?? null,
       serviceAccountId: dto.serviceAccountId ?? null,
       metadata: dto.metadata ?? null,
     });
@@ -709,6 +725,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const subscription = await this.subscriptionsRepo.save(
       this.subscriptionsRepo.create({
         tenantId: auth.tenantId,
+        ...this.ownershipFrom(auth),
         provider: this.billing.provider,
         providerSubscriptionId: null,
         providerCheckoutSessionId: activationToken,
@@ -775,6 +792,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const subscription = await this.subscriptionsRepo.save(
       this.subscriptionsRepo.create({
         tenantId: auth.tenantId,
+        ...this.ownershipFrom(auth),
         provider: 'stripe',
         providerSubscriptionId: null,
         providerCheckoutSessionId: null,
@@ -901,6 +919,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const subscription = await this.subscriptionsRepo.save(
       this.subscriptionsRepo.create({
         tenantId: auth.tenantId,
+        ...this.ownershipFrom(auth),
         provider: 'mercadopago',
         providerSubscriptionId: null,
         providerCheckoutSessionId: null,
