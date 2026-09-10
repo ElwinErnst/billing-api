@@ -35,6 +35,10 @@ export class RecordUsageEventDto {
 
   @IsOptional()
   @IsUUID()
+  environmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
   serviceAccountId?: string;
 
   @IsOptional()
