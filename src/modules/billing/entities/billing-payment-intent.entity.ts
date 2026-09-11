@@ -37,6 +37,11 @@ export class BillingPaymentIntentEntity {
   @Column({ name: 'environment_id', type: 'uuid', nullable: true })
   environmentId!: string | null;
 
+  // Which configured ProviderConnection processed this payment (null = global
+  // default config). Enables per-account reconciliation and isolation.
+  @Column({ name: 'provider_connection_id', type: 'uuid', nullable: true })
+  providerConnectionId!: string | null;
+
   @Column({ name: 'provider', type: 'varchar', length: 30, default: 'mock' })
   provider!: string;
 

@@ -35,6 +35,9 @@ import { BillingPeriodCloseEntity } from './entities/billing-period-close.entity
 import { BillingSubscriptionEntity } from './entities/billing-subscription.entity';
 import { BillingUsageEventEntity } from './entities/billing-usage-event.entity';
 import { OutboundWebhookService } from './outbound-webhook.service';
+import { ProviderConnectionService } from './provider-connection.service';
+import { ProviderSecretResolver } from './provider-secret.resolver';
+import type { ProviderConnectionEntity } from './entities/provider-connection.entity';
 import type { BillingConfig } from './types/billing-config.type';
 
 @Injectable()
@@ -60,6 +63,8 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly authDirectory: AuthDirectoryService,
     private readonly outboundWebhooks: OutboundWebhookService,
+    private readonly providerConnections: ProviderConnectionService,
+    private readonly providerSecrets: ProviderSecretResolver,
   ) {}
 
   onModuleInit() {
@@ -256,10 +261,20 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    // Route to the most specific provider connection for this app/environment
+    // (null = fall back to the deployment's global provider config).
+    const connection = await this.providerConnections.resolveForContext(
+      auth.tenantId,
+      auth.clientAppId,
+      auth.environmentId,
+      provider,
+    );
+
     const intent = await this.paymentIntentsRepo.save(
       this.paymentIntentsRepo.create({
         tenantId: auth.tenantId,
         ...this.ownershipFrom(auth),
+        providerConnectionId: connection?.id ?? null,
         provider,
         status: 'PENDING',
         amountCents,
@@ -272,7 +287,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     );
 
     if (provider === 'mercadopago') {
-      return this.createMercadoPagoOneOff(auth, dto, intent, currency);
+      return this.createMercadoPagoOneOff(auth, dto, intent, currency, connection);
     }
 
     return this.createMockOneOff(intent);
@@ -288,6 +303,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     dto: CreateOneOffCheckoutDto,
     intent: BillingPaymentIntentEntity,
     currency: string,
+    connection: ProviderConnectionEntity | null,
   ) {
     const defaultReturnUrl = `${this.billing.publicBaseUrl}/billing/checkout/mercadopago/return`;
     const successUrl = dto.successUrl ?? defaultReturnUrl;
@@ -296,7 +312,15 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const hasPublicReturnUrl = this.isPublicCallbackUrl(successUrl);
     const notificationUrl = `${this.billing.publicBaseUrl}/billing/webhooks/mercadopago`;
     const hasPublicWebhookUrl = this.isPublicCallbackUrl(notificationUrl);
-    const preferenceClient = this.getMercadoPagoPreference();
+    // Use the connection's credentials when one is configured; otherwise the
+    // global default client (unchanged behaviour).
+    const preferenceClient = connection
+      ? new Preference(
+          new MercadoPagoConfig(
+            this.providerSecrets.resolveMercadoPago(connection),
+          ),
+        )
+      : this.getMercadoPagoPreference();
 
     let preference;
     try {
