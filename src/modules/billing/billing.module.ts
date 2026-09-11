@@ -9,8 +9,12 @@ import { BillingPaymentIntentEntity } from "./entities/billing-payment-intent.en
 import { BillingPeriodCloseEntity } from "./entities/billing-period-close.entity";
 import { BillingSubscriptionEntity } from "./entities/billing-subscription.entity";
 import { BillingUsageEventEntity } from "./entities/billing-usage-event.entity";
+import { ProviderConnectionEntity } from "./entities/provider-connection.entity";
 import { BillingController } from "./billing.controller";
+import { ProviderConnectionsController } from "./provider-connections.controller";
 import { BillingService } from "./billing.service";
+import { ProviderConnectionService } from "./provider-connection.service";
+import { ProviderSecretResolver } from "./provider-secret.resolver";
 import { OutboundWebhookService } from "./outbound-webhook.service";
 
 @Module({
@@ -21,12 +25,19 @@ import { OutboundWebhookService } from "./outbound-webhook.service";
       BillingPeriodCloseEntity,
       BillingSubscriptionEntity,
       BillingUsageEventEntity,
+      ProviderConnectionEntity,
     ]),
     ReplayModule,
   ],
-  controllers: [BillingController, BillingInternalController],
+  controllers: [
+    BillingController,
+    BillingInternalController,
+    ProviderConnectionsController,
+  ],
   providers: [
     BillingService,
+    ProviderConnectionService,
+    ProviderSecretResolver,
     OutboundWebhookService,
     AuthDirectoryService,
     InternalServiceGuard,
