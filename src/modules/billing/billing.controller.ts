@@ -16,6 +16,8 @@ import { SkipThrottle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
+import { ScopesGuard } from '../../common/guards/scopes.guard';
+import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
@@ -76,7 +78,8 @@ export class BillingController {
   }
 
   @Post('one-off-checkout')
-  @UseGuards(AccessJwtGuard)
+  @UseGuards(AccessJwtGuard, ScopesGuard)
+  @RequireScopes('payments:create')
   createOneOffCheckout(
     @CurrentAuth() auth: AccessTokenPayload,
     @Body() dto: CreateOneOffCheckoutDto,
