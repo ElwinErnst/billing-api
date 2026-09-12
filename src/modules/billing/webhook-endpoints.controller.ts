@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
@@ -18,6 +19,7 @@ import { CreateWebhookEndpointDto } from './dto/create-webhook-endpoint.dto';
  * from the token, never the path (no IDOR). The signing secret is returned only
  * once, in the create response.
  */
+@ApiTags('Webhook Endpoints')
 @Controller('billing/webhook-endpoints')
 @UseGuards(AccessJwtGuard)
 export class WebhookEndpointsController {

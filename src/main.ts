@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -27,10 +28,29 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
+  // Versioned OpenAPI contract for the multi-app developer API. UI at /docs,
+  // machine-readable spec at /docs-json.
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Sytadel Billing API')
+    .setDescription(
+      'Multi-app billing: organizations (tenants) register applications and ' +
+        'environments, issue scoped API keys, configure provider connections ' +
+        'and webhook endpoints, take payments, and read usage — each scoped to ' +
+        'an application/environment.',
+    )
+    .setVersion('1.0.0')
+    .addBearerAuth()
+    .build();
+  const openApiDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, openApiDocument, {
+    jsonDocumentUrl: 'docs-json',
+  });
+
   const port = Number(process.env.PORT ?? 3020);
   await app.listen(port);
 
   console.log(`Billing API running on http://localhost:${port}/api`);
+  console.log(`OpenAPI docs on http://localhost:${port}/docs`);
 }
 
 void bootstrap();

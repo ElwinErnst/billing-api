@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
@@ -24,6 +25,7 @@ import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
 import { UsageReportQueryDto } from './dto/usage-report-query.dto';
 import { BillingService } from './billing.service';
 
+@ApiTags('Billing')
 @Controller('billing')
 export class BillingController {
   constructor(
