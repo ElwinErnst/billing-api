@@ -21,6 +21,7 @@ import { RequireScopes } from '../../common/decorators/require-scopes.decorator'
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
+import { UsageReportQueryDto } from './dto/usage-report-query.dto';
 import { BillingService } from './billing.service';
 
 @Controller('billing')
@@ -66,6 +67,15 @@ export class BillingController {
   @UseGuards(AccessJwtGuard)
   createPortalSession(@CurrentAuth() auth: AccessTokenPayload) {
     return this.billingService.createPortalSession(auth);
+  }
+
+  @Get('usage/by-application')
+  @UseGuards(AccessJwtGuard)
+  getUsageByApplication(
+    @CurrentAuth() auth: AccessTokenPayload,
+    @Query() query: UsageReportQueryDto,
+  ) {
+    return this.billingService.getUsageByApplication(auth, query);
   }
 
   @Post('checkout-sessions')
