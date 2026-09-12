@@ -2,15 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { BillingPaymentIntentEntity } from './entities/billing-payment-intent.entity';
+import { WebhookEndpointService } from './webhook-endpoint.service';
 import type { BillingConfig } from './types/billing-config.type';
 
 export type OutboundPaymentEvent = 'payment.approved' | 'payment.failed';
 
+type DeliveryTarget = { url: string; secret: string; label: string };
+
+type TargetResult = {
+  label: string;
+  delivered: boolean;
+  attempts: number;
+};
+
 type DeliveryResult = {
   delivered: boolean;
   eventId: string;
-  attempts: number;
-  skippedReason?: 'no-url' | 'no-secret';
+  targets: TargetResult[];
+  skippedReason?: 'no-targets' | 'no-secret';
 };
 
 /**
@@ -36,7 +45,10 @@ export class OutboundWebhookService {
   private static readonly BACKOFF_MS = [0, 500, 2000];
   private static readonly TIMEOUT_MS = 5000;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly webhookEndpoints: WebhookEndpointService,
+  ) {}
 
   private get secret(): string {
     return this.configService.get<BillingConfig>('billing')!.outboundWebhookSecret;
@@ -76,21 +88,43 @@ export class OutboundWebhookService {
       intent.status === 'APPROVED' ? 'payment.approved' : 'payment.failed';
     const eventId = randomUUID();
 
-    if (!intent.webhookUrl) {
-      return { delivered: false, eventId, attempts: 0, skippedReason: 'no-url' };
+    // Registered endpoints for this payment's app/environment subscribed to the
+    // event — each signed with its own secret.
+    const registered = await this.webhookEndpoints.resolveTargets(
+      intent.tenantId,
+      intent.clientAppId,
+      intent.environmentId,
+      event,
+    );
+    const targets: DeliveryTarget[] = registered.map((endpoint) => ({
+      url: endpoint.url,
+      secret: endpoint.secret,
+      label: `endpoint:${endpoint.id}`,
+    }));
+
+    // Legacy path: a webhookUrl passed on the intent, signed with the global
+    // secret. Kept for backward compatibility with pre-endpoint consumers.
+    if (intent.webhookUrl) {
+      if (this.secret) {
+        targets.push({
+          url: intent.webhookUrl,
+          secret: this.secret,
+          label: 'legacy-webhookUrl',
+        });
+      } else {
+        // Never send an unsigned event; surface the misconfiguration.
+        this.logger.warn(
+          `Outbound webhook secret is not configured; skipping legacy delivery of ${event} for intent ${intent.id}`,
+        );
+      }
     }
 
-    if (!this.secret) {
-      // Never send an unsigned event: a consumer that cannot verify is worse
-      // than no delivery. Surface the misconfiguration loudly instead.
-      this.logger.warn(
-        `Outbound webhook secret is not configured; skipping ${event} for intent ${intent.id}`,
-      );
+    if (targets.length === 0) {
       return {
         delivered: false,
         eventId,
-        attempts: 0,
-        skippedReason: 'no-secret',
+        targets: [],
+        skippedReason: intent.webhookUrl ? 'no-secret' : 'no-targets',
       };
     }
 
@@ -107,6 +141,28 @@ export class OutboundWebhookService {
     };
     const rawBody = JSON.stringify(payload);
 
+    const results: TargetResult[] = [];
+    for (const target of targets) {
+      results.push(
+        await this.deliverToTarget(target, event, eventId, rawBody, intent.id),
+      );
+    }
+
+    return {
+      delivered: results.some((r) => r.delivered),
+      eventId,
+      targets: results,
+    };
+  }
+
+  /** Deliver one signed event to a single target, with bounded retries. */
+  private async deliverToTarget(
+    target: DeliveryTarget,
+    event: OutboundPaymentEvent,
+    eventId: string,
+    rawBody: string,
+    intentId: string,
+  ): Promise<TargetResult> {
     for (let attempt = 1; attempt <= OutboundWebhookService.MAX_ATTEMPTS; attempt++) {
       const backoff = OutboundWebhookService.BACKOFF_MS[attempt - 1] ?? 2000;
       if (backoff > 0) {
@@ -122,13 +178,13 @@ export class OutboundWebhookService {
         );
         let response: Response;
         try {
-          response = await fetch(intent.webhookUrl, {
+          response = await fetch(target.url, {
             method: 'POST',
             headers: {
               'content-type': 'application/json',
               'x-sytadel-event-id': eventId,
               'x-sytadel-signature': OutboundWebhookService.signature(
-                this.secret,
+                target.secret,
                 tsMs,
                 rawBody,
               ),
@@ -141,14 +197,14 @@ export class OutboundWebhookService {
         }
 
         if (response.ok) {
-          return { delivered: true, eventId, attempts: attempt };
+          return { label: target.label, delivered: true, attempts: attempt };
         }
         this.logger.warn(
-          `Outbound webhook ${event} for intent ${intent.id} got HTTP ${response.status} (attempt ${attempt})`,
+          `Outbound webhook ${event} for intent ${intentId} -> ${target.label} got HTTP ${response.status} (attempt ${attempt})`,
         );
       } catch (error) {
         this.logger.warn(
-          `Outbound webhook ${event} for intent ${intent.id} failed (attempt ${attempt}): ${
+          `Outbound webhook ${event} for intent ${intentId} -> ${target.label} failed (attempt ${attempt}): ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -156,11 +212,11 @@ export class OutboundWebhookService {
     }
 
     this.logger.error(
-      `Outbound webhook ${event} for intent ${intent.id} exhausted retries; eventId=${eventId}`,
+      `Outbound webhook ${event} for intent ${intentId} -> ${target.label} exhausted retries; eventId=${eventId}`,
     );
     return {
+      label: target.label,
       delivered: false,
-      eventId,
       attempts: OutboundWebhookService.MAX_ATTEMPTS,
     };
   }

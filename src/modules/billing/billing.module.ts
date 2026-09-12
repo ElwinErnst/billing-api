@@ -10,11 +10,14 @@ import { BillingPeriodCloseEntity } from "./entities/billing-period-close.entity
 import { BillingSubscriptionEntity } from "./entities/billing-subscription.entity";
 import { BillingUsageEventEntity } from "./entities/billing-usage-event.entity";
 import { ProviderConnectionEntity } from "./entities/provider-connection.entity";
+import { WebhookEndpointEntity } from "./entities/webhook-endpoint.entity";
 import { BillingController } from "./billing.controller";
 import { ProviderConnectionsController } from "./provider-connections.controller";
+import { WebhookEndpointsController } from "./webhook-endpoints.controller";
 import { BillingService } from "./billing.service";
 import { ProviderConnectionService } from "./provider-connection.service";
 import { ProviderSecretResolver } from "./provider-secret.resolver";
+import { WebhookEndpointService } from "./webhook-endpoint.service";
 import { OutboundWebhookService } from "./outbound-webhook.service";
 
 @Module({
@@ -26,6 +29,7 @@ import { OutboundWebhookService } from "./outbound-webhook.service";
       BillingSubscriptionEntity,
       BillingUsageEventEntity,
       ProviderConnectionEntity,
+      WebhookEndpointEntity,
     ]),
     ReplayModule,
   ],
@@ -33,11 +37,13 @@ import { OutboundWebhookService } from "./outbound-webhook.service";
     BillingController,
     BillingInternalController,
     ProviderConnectionsController,
+    WebhookEndpointsController,
   ],
   providers: [
     BillingService,
     ProviderConnectionService,
     ProviderSecretResolver,
+    WebhookEndpointService,
     OutboundWebhookService,
     AuthDirectoryService,
     InternalServiceGuard,
