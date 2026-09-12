@@ -29,6 +29,7 @@ import {
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
 import { RecordUsageEventDto } from './dto/record-usage-event.dto';
+import { UsageReportQueryDto } from './dto/usage-report-query.dto';
 import { BillingCustomerEntity } from './entities/billing-customer.entity';
 import { BillingPaymentIntentEntity } from './entities/billing-payment-intent.entity';
 import { BillingPeriodCloseEntity } from './entities/billing-period-close.entity';
@@ -1745,6 +1746,124 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         clientAppId: event.clientAppId,
         serviceAccountId: event.serviceAccountId,
         createdAt: event.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Usage rolled up by application → environment → metric for a tenant. Reads
+   * the app/environment ownership recorded on usage events (MA-3). Aggregated in
+   * SQL (GROUP BY) so it scales past what fits in memory. Read-only.
+   */
+  async getUsageByApplication(
+    auth: AccessTokenPayload,
+    query: UsageReportQueryDto,
+  ) {
+    this.assertOwner(auth);
+    const tenantId = auth.tenantId;
+    const qb = this.usageEventsRepo
+      .createQueryBuilder('e')
+      .select('e.client_app_id', 'clientAppId')
+      .addSelect('e.environment_id', 'environmentId')
+      .addSelect('e.addon_code', 'addonCode')
+      .addSelect('e.metric', 'metric')
+      .addSelect('SUM(e.quantity)', 'quantity')
+      .addSelect('COUNT(*)', 'events')
+      .where('e.tenant_id = :tenantId', { tenantId })
+      .groupBy('e.client_app_id')
+      .addGroupBy('e.environment_id')
+      .addGroupBy('e.addon_code')
+      .addGroupBy('e.metric');
+
+    if (query.from) {
+      qb.andWhere('e.created_at >= :from', { from: query.from });
+    }
+    if (query.to) {
+      qb.andWhere('e.created_at < :to', { to: query.to });
+    }
+
+    const rows = await qb.getRawMany<{
+      clientAppId: string | null;
+      environmentId: string | null;
+      addonCode: string;
+      metric: string;
+      quantity: string;
+      events: string;
+    }>();
+
+    // Shape flat GROUP BY rows into application → environment → metrics. A null
+    // clientAppId means tenant-level (unattributed) usage — its own bucket.
+    const apps = new Map<
+      string,
+      {
+        clientAppId: string | null;
+        totalQuantity: number;
+        totalEvents: number;
+        environments: Map<
+          string,
+          {
+            environmentId: string | null;
+            totalQuantity: number;
+            totalEvents: number;
+            metrics: Array<{
+              addonCode: string;
+              metric: string;
+              quantity: number;
+              events: number;
+            }>;
+          }
+        >;
+      }
+    >();
+
+    for (const row of rows) {
+      const quantity = Number(row.quantity);
+      const events = Number(row.events);
+      const appKey = row.clientAppId ?? ' tenant';
+      const envKey = row.environmentId ?? ' none';
+
+      const app =
+        apps.get(appKey) ??
+        apps
+          .set(appKey, {
+            clientAppId: row.clientAppId,
+            totalQuantity: 0,
+            totalEvents: 0,
+            environments: new Map(),
+          })
+          .get(appKey)!;
+      app.totalQuantity += quantity;
+      app.totalEvents += events;
+
+      const env =
+        app.environments.get(envKey) ??
+        app.environments
+          .set(envKey, {
+            environmentId: row.environmentId,
+            totalQuantity: 0,
+            totalEvents: 0,
+            metrics: [],
+          })
+          .get(envKey)!;
+      env.totalQuantity += quantity;
+      env.totalEvents += events;
+      env.metrics.push({
+        addonCode: row.addonCode,
+        metric: row.metric,
+        quantity,
+        events,
+      });
+    }
+
+    return {
+      tenantId,
+      from: query.from ?? null,
+      to: query.to ?? null,
+      applications: Array.from(apps.values()).map((app) => ({
+        clientAppId: app.clientAppId,
+        totalQuantity: app.totalQuantity,
+        totalEvents: app.totalEvents,
+        environments: Array.from(app.environments.values()),
       })),
     };
   }
