@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
@@ -18,6 +19,7 @@ import { CreateProviderConnectionDto } from './dto/create-provider-connection.dt
  * always derived from the token — never from the path — so a caller can only
  * manage its own connections (no tenant IDOR).
  */
+@ApiTags('Provider Connections')
 @Controller('billing/provider-connections')
 @UseGuards(AccessJwtGuard)
 export class ProviderConnectionsController {
