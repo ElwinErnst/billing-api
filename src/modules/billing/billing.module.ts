@@ -18,6 +18,7 @@ import { BillingService } from "./billing.service";
 import { ProviderConnectionService } from "./provider-connection.service";
 import { ProviderSecretResolver } from "./provider-secret.resolver";
 import { WebhookEndpointService } from "./webhook-endpoint.service";
+import { SecretCipher } from "./secret-cipher";
 import { OutboundWebhookService } from "./outbound-webhook.service";
 
 @Module({
@@ -44,6 +45,7 @@ import { OutboundWebhookService } from "./outbound-webhook.service";
     ProviderConnectionService,
     ProviderSecretResolver,
     WebhookEndpointService,
+    SecretCipher,
     OutboundWebhookService,
     AuthDirectoryService,
     InternalServiceGuard,

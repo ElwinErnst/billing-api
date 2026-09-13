@@ -21,6 +21,9 @@ export default registerAs('billing', () => ({
   // outbound delivery is skipped (never send an event a consumer can't verify).
   // Phase 4 (self-serve API keys) will move this to per-tenant secrets.
   outboundWebhookSecret: process.env.BILLING_OUTBOUND_WEBHOOK_SECRET ?? '',
+  // 32-byte hex key (64 chars) for encrypting stored secrets at rest (webhook
+  // signing secrets). Empty = passthrough (plaintext), fine for dev/local.
+  secretEncryptionKey: process.env.BILLING_SECRET_ENC_KEY ?? '',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
