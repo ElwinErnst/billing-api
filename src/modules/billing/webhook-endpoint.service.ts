@@ -4,12 +4,14 @@ import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { WebhookEndpointEntity } from './entities/webhook-endpoint.entity';
 import { CreateWebhookEndpointDto } from './dto/create-webhook-endpoint.dto';
+import { SecretCipher } from './secret-cipher';
 
 @Injectable()
 export class WebhookEndpointService {
   constructor(
     @InjectRepository(WebhookEndpointEntity)
     private readonly endpointsRepo: Repository<WebhookEndpointEntity>,
+    private readonly cipher: SecretCipher,
   ) {}
 
   async list(tenantId: string) {
@@ -28,7 +30,8 @@ export class WebhookEndpointService {
       clientAppId: dto.clientAppId ?? null,
       environmentId: dto.environmentId ?? null,
       url: dto.url,
-      secret,
+      // Encrypted at rest (passthrough when no key configured).
+      secret: this.cipher.encrypt(secret),
       secretPreview: `••••${secret.slice(-6)}`,
       enabled: true,
       events: dto.events,
@@ -63,12 +66,19 @@ export class WebhookEndpointService {
     const endpoints = await this.endpointsRepo.find({
       where: { tenantId, enabled: true },
     });
-    return endpoints.filter(
-      (e) =>
-        (e.clientAppId === null || e.clientAppId === clientAppId) &&
-        (e.environmentId === null || e.environmentId === environmentId) &&
-        e.events.includes(event),
-    );
+    return endpoints
+      .filter(
+        (e) =>
+          (e.clientAppId === null || e.clientAppId === clientAppId) &&
+          (e.environmentId === null || e.environmentId === environmentId) &&
+          e.events.includes(event),
+      )
+      .map((e) => {
+        // Hand the caller (delivery) the plaintext secret to sign with. This is
+        // a transient in-memory decrypt — the row stays encrypted at rest.
+        e.secret = this.cipher.decrypt(e.secret);
+        return e;
+      });
   }
 
   private serialize(e: WebhookEndpointEntity) {
