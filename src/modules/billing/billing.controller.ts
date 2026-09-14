@@ -23,6 +23,7 @@ import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
 import { UsageReportQueryDto } from './dto/usage-report-query.dto';
+import { ListApplicationRecordsQueryDto } from './dto/list-application-records-query.dto';
 import { BillingService } from './billing.service';
 
 @ApiTags('Billing')
@@ -78,6 +79,30 @@ export class BillingController {
     @Query() query: UsageReportQueryDto,
   ) {
     return this.billingService.getUsageByApplication(auth, query);
+  }
+
+  @Get('applications/:clientAppId/payments')
+  @UseGuards(AccessJwtGuard)
+  listApplicationPayments(
+    @CurrentAuth() auth: AccessTokenPayload,
+    @Param('clientAppId') clientAppId: string,
+    @Query() query: ListApplicationRecordsQueryDto,
+  ) {
+    return this.billingService.listApplicationPayments(auth, clientAppId, query);
+  }
+
+  @Get('applications/:clientAppId/subscriptions')
+  @UseGuards(AccessJwtGuard)
+  listApplicationSubscriptions(
+    @CurrentAuth() auth: AccessTokenPayload,
+    @Param('clientAppId') clientAppId: string,
+    @Query() query: ListApplicationRecordsQueryDto,
+  ) {
+    return this.billingService.listApplicationSubscriptions(
+      auth,
+      clientAppId,
+      query,
+    );
   }
 
   @Post('checkout-sessions')
