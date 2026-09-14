@@ -30,6 +30,7 @@ import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
 import { RecordUsageEventDto } from './dto/record-usage-event.dto';
 import { UsageReportQueryDto } from './dto/usage-report-query.dto';
+import { ListApplicationRecordsQueryDto } from './dto/list-application-records-query.dto';
 import { BillingCustomerEntity } from './entities/billing-customer.entity';
 import { BillingPaymentIntentEntity } from './entities/billing-payment-intent.entity';
 import { BillingPeriodCloseEntity } from './entities/billing-period-close.entity';
@@ -1864,6 +1865,78 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         totalQuantity: app.totalQuantity,
         totalEvents: app.totalEvents,
         environments: Array.from(app.environments.values()),
+      })),
+    };
+  }
+
+  /** Payment intents owned by one application (most recent first). Read-only. */
+  async listApplicationPayments(
+    auth: AccessTokenPayload,
+    clientAppId: string,
+    query: ListApplicationRecordsQueryDto,
+  ) {
+    this.assertOwner(auth);
+    const intents = await this.paymentIntentsRepo.find({
+      where: {
+        tenantId: auth.tenantId,
+        clientAppId,
+        ...(query.environmentId ? { environmentId: query.environmentId } : {}),
+      },
+      order: { createdAt: 'DESC' },
+      take: query.limit ?? 50,
+    });
+
+    return {
+      clientAppId,
+      payments: intents.map((intent) => ({
+        id: intent.id,
+        environmentId: intent.environmentId,
+        providerConnectionId: intent.providerConnectionId,
+        provider: intent.provider,
+        status: intent.status,
+        amountCents: intent.amountCents,
+        currency: intent.currency,
+        description: intent.description,
+        externalReference: intent.externalReference,
+        providerPaymentId: intent.providerPaymentId,
+        createdAt: intent.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /** Subscriptions owned by one application (most recent first). Read-only. */
+  async listApplicationSubscriptions(
+    auth: AccessTokenPayload,
+    clientAppId: string,
+    query: ListApplicationRecordsQueryDto,
+  ) {
+    this.assertOwner(auth);
+    const subscriptions = await this.subscriptionsRepo.find({
+      where: {
+        tenantId: auth.tenantId,
+        clientAppId,
+        ...(query.environmentId ? { environmentId: query.environmentId } : {}),
+      },
+      order: { createdAt: 'DESC' },
+      take: query.limit ?? 50,
+    });
+
+    return {
+      clientAppId,
+      subscriptions: subscriptions.map((subscription) => ({
+        id: subscription.id,
+        environmentId: subscription.environmentId,
+        provider: subscription.provider,
+        status: subscription.status,
+        basePlan: subscription.basePlan,
+        industryPackage: subscription.industryPackage,
+        billingCycle: subscription.billingCycle,
+        seats: subscription.seats,
+        currency: subscription.currency,
+        amountCents: subscription.amountCents,
+        currentPeriodEndsAt:
+          subscription.currentPeriodEndsAt?.toISOString() ?? null,
+        createdAt: subscription.createdAt.toISOString(),
       })),
     };
   }
