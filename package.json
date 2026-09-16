@@ -53,5 +53,6 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.46.1"
-  }
+  },
+  "license": "Apache-2.0"
 }
