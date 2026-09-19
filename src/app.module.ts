@@ -11,6 +11,7 @@ import dbConfig from "./config/db.config";
 import internalConfig from "./config/internal.config";
 import { AuthModule } from "./modules/auth/auth.module";
 import { BillingModule } from "./modules/billing/billing.module";
+import { AuditModule } from "./modules/audit/audit.module";
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { BillingModule } from "./modules/billing/billing.module";
     ]),
     AuthModule,
     BillingModule,
+    AuditModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
