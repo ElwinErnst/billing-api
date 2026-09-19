@@ -20,6 +20,7 @@ import { ProviderSecretResolver } from "./provider-secret.resolver";
 import { WebhookEndpointService } from "./webhook-endpoint.service";
 import { SecretCipher } from "./secret-cipher";
 import { OutboundWebhookService } from "./outbound-webhook.service";
+import { AuditModule } from "../audit/audit.module";
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { OutboundWebhookService } from "./outbound-webhook.service";
       WebhookEndpointEntity,
     ]),
     ReplayModule,
+    AuditModule,
   ],
   controllers: [
     BillingController,

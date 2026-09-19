@@ -38,6 +38,7 @@ import { BillingSubscriptionEntity } from './entities/billing-subscription.entit
 import { BillingUsageEventEntity } from './entities/billing-usage-event.entity';
 import { OutboundWebhookService } from './outbound-webhook.service';
 import { ProviderConnectionService } from './provider-connection.service';
+import { AuditService } from '../audit/audit.service';
 import { ProviderSecretResolver } from './provider-secret.resolver';
 import type { ProviderConnectionEntity } from './entities/provider-connection.entity';
 import type { BillingConfig } from './types/billing-config.type';
@@ -67,6 +68,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     private readonly outboundWebhooks: OutboundWebhookService,
     private readonly providerConnections: ProviderConnectionService,
     private readonly providerSecrets: ProviderSecretResolver,
+    private readonly audit: AuditService,
   ) {}
 
   onModuleInit() {
@@ -418,6 +420,21 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       ? this.buildDataDeletionDueAt(subscription.currentPeriodEndsAt)
       : null;
     await this.subscriptionsRepo.save(subscription);
+
+    await this.audit.emit({
+      tenantId: auth.tenantId,
+      system: 'billing',
+      category: 'billing',
+      action: 'SUBSCRIPTION_CANCEL_SCHEDULED',
+      actorType: 'user',
+      actorId: auth.sub,
+      resourceType: 'subscription',
+      resourceId: subscription.id,
+      outcome: 'success',
+      detail: {
+        effectiveAt: subscription.currentPeriodEndsAt?.toISOString() ?? null,
+      },
+    });
 
     return {
       ok: true,
@@ -1479,6 +1496,22 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       maxClientApps: authApiIncluded ? apiLimits.maxClientApps : 0,
       maxServiceAccounts: authApiIncluded ? apiLimits.maxServiceAccounts : 0,
       apiAddons: normalizedAddOns,
+    });
+
+    await this.audit.emit({
+      tenantId: subscription.tenantId,
+      system: 'billing',
+      category: 'billing',
+      action: 'PLAN_CHANGED',
+      actorType: 'system',
+      actorId: null,
+      resourceType: 'subscription',
+      resourceId: subscription.id,
+      outcome: 'success',
+      detail: {
+        plan: isCanceled ? 'FREE' : subscription.basePlan,
+        status: subscription.status,
+      },
     });
   }
 
