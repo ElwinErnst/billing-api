@@ -1,6 +1,5 @@
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
   PrimaryGeneratedColumn,
@@ -13,9 +12,12 @@ import type {
 } from '../audit-event.types';
 
 /**
- * A normalized audit event owned by billing-api. Queried per tenant, newest
- * first, so the hot path is (tenant_id, occurred_at).
+ * A normalized audit event owned by billing-api. Tamper-evident: rows form a hash
+ * chain per `scope` (= tenantId), with a monotonic `seq` and event/prev/chain
+ * hashes verified by the chain kit. `occurred_at` is assigned by the app (never
+ * a DB default) so it can be committed to the hash deterministically.
  */
+@Index(['scope', 'seq'], { unique: true })
 @Index(['tenantId', 'occurredAt'])
 @Entity('audit_events')
 export class AuditEvent {
@@ -24,6 +26,13 @@ export class AuditEvent {
 
   @Column({ type: 'uuid', name: 'tenant_id' })
   tenantId!: string;
+
+  /** Chain partition. One monotonic seq per scope; here scope = tenantId. */
+  @Column({ type: 'varchar', length: 64 })
+  scope!: string;
+
+  @Column({ type: 'bigint' })
+  seq!: string; // bigint as string
 
   @Column({ type: 'varchar', length: 16 })
   system!: AuditSystem;
@@ -52,6 +61,22 @@ export class AuditEvent {
   @Column({ type: 'jsonb', nullable: true })
   detail!: Record<string, unknown> | null;
 
-  @CreateDateColumn({ name: 'occurred_at', type: 'timestamptz' })
+  // App-assigned (ms precision), not a DB default — committed to the hash.
+  @Column({ type: 'timestamptz', name: 'occurred_at' })
   occurredAt!: Date;
+
+  @Column({ type: 'char', length: 64, name: 'event_hash' })
+  eventHash!: string;
+
+  @Column({ type: 'char', length: 64, name: 'prev_hash', nullable: true })
+  prevHash!: string | null;
+
+  @Column({ type: 'char', length: 64, name: 'chain_hash' })
+  chainHash!: string;
+
+  @Column({ type: 'int', name: 'schema_version', default: 1 })
+  schemaVersion!: number;
+
+  @Column({ type: 'varchar', length: 20, name: 'hash_alg', default: 'sha256' })
+  hashAlg!: string;
 }
