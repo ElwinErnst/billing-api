@@ -41,4 +41,15 @@ export class AuditController {
       limit: limit ? Number(limit) : undefined,
     });
   }
+
+  /** Verify the tamper-evident hash chain for this tenant's audit events. */
+  @Get('audit-events/verify')
+  @UseGuards(AccessJwtGuard)
+  verify(@CurrentAuth() auth: AccessTokenPayload) {
+    const isAdmin = auth.roles.some((role) => ['OWNER', 'ADMIN'].includes(role));
+    if (!isAdmin) {
+      throw new ForbiddenException('Only OWNER or ADMIN can read the audit log');
+    }
+    return this.audit.verifyChain(auth.tenantId);
+  }
 }
