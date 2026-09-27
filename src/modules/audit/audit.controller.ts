@@ -2,6 +2,8 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  HttpCode,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -9,6 +11,7 @@ import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import { AuditService } from './audit.service';
+import { AuditCheckpointService } from './audit-checkpoint.service';
 
 /**
  * Read API for this service's audit events (subscription lifecycle). Tenant is
@@ -18,7 +21,17 @@ import { AuditService } from './audit.service';
  */
 @Controller('billing')
 export class AuditController {
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    private readonly checkpoints: AuditCheckpointService,
+  ) {}
+
+  private assertAdmin(auth: AccessTokenPayload): void {
+    const isAdmin = auth.roles.some((role) => ['OWNER', 'ADMIN'].includes(role));
+    if (!isAdmin) {
+      throw new ForbiddenException('Only OWNER or ADMIN can read the audit log');
+    }
+  }
 
   @Get('audit-events')
   @UseGuards(AccessJwtGuard)
@@ -27,29 +40,41 @@ export class AuditController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    const isAdmin = auth.roles.some((role) =>
-      ['OWNER', 'ADMIN'].includes(role),
-    );
-    if (!isAdmin) {
-      throw new ForbiddenException(
-        'Only OWNER or ADMIN can read the audit log',
-      );
-    }
-
+    this.assertAdmin(auth);
     return this.audit.list(auth.tenantId, {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
   }
 
-  /** Verify the tamper-evident hash chain for this tenant's audit events. */
+  /**
+   * Verify the tamper-evident hash chain AND its position against the latest
+   * anchored checkpoint (so suffix truncation is caught). Returns the flat
+   * ChainVerifyResult fields at the top level (the console reads them there) plus
+   * the anchor fields.
+   */
   @Get('audit-events/verify')
   @UseGuards(AccessJwtGuard)
-  verify(@CurrentAuth() auth: AccessTokenPayload) {
-    const isAdmin = auth.roles.some((role) => ['OWNER', 'ADMIN'].includes(role));
-    if (!isAdmin) {
-      throw new ForbiddenException('Only OWNER or ADMIN can read the audit log');
-    }
-    return this.audit.verifyChain(auth.tenantId);
+  async verify(@CurrentAuth() auth: AccessTokenPayload) {
+    this.assertAdmin(auth);
+    const result = await this.checkpoints.verifyScopeAnchored(auth.tenantId);
+    return {
+      ...result.chain,
+      anchorStatus: result.anchorStatus,
+      anchorReason: result.anchorReason,
+      anchoredSeq: result.anchoredSeq,
+      anchoredAt: result.anchoredAt,
+      anchorMode: result.anchorMode,
+    };
+  }
+
+  /** Anchor the current chain head for this tenant (SIMULATED until a TSA is set). */
+  @Post('audit-events/checkpoint')
+  @UseGuards(AccessJwtGuard)
+  @HttpCode(200)
+  async checkpoint(@CurrentAuth() auth: AccessTokenPayload) {
+    this.assertAdmin(auth);
+    const outcome = await this.checkpoints.createCheckpoint(auth.tenantId);
+    return { outcome };
   }
 }
