@@ -141,4 +141,4 @@ yarn test
 
 ## Licencia
 
-Apache-2.0. Ver [LICENSE](./LICENSE).
+PolyForm Strict 1.0.0 (source-available, uso no comercial). Ver [LICENSE](./LICENSE).
