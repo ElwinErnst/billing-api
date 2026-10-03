@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, randomUUID } from 'crypto';
 import type { AuthDirectoryConfig } from './types/auth-directory-config.type';
 import type {
+  PlatformSubscriptionAuthorization,
   RemoteTenantSummary,
   TenantBillingSyncPayload,
 } from './types/tenant-billing-sync-payload.type';
@@ -35,6 +36,25 @@ export class AuthDirectoryService {
     const url = this.buildUrl(`internal/tenants/${tenantId}`);
     return this.fetchJson<RemoteTenantSummary>(url.toString(), {
       method: 'GET',
+    });
+  }
+
+  async authorizePlatformSubscription(input: {
+    organizationId: string;
+    billingAccountId: string;
+    actorUserId: string;
+    coveredTenantIds: string[];
+  }): Promise<PlatformSubscriptionAuthorization> {
+    const url = this.buildUrl(
+      `internal/organizations/${input.organizationId}/platform-subscription-authorization`,
+    );
+    return this.fetchJson<PlatformSubscriptionAuthorization>(url.toString(), {
+      method: 'POST',
+      body: {
+        actorUserId: input.actorUserId,
+        billingAccountId: input.billingAccountId,
+        coveredTenantIds: input.coveredTenantIds,
+      },
     });
   }
 
@@ -79,7 +99,7 @@ export class AuthDirectoryService {
   private async fetchJson<T>(
     url: string,
     options: {
-      method: 'GET' | 'PATCH';
+      method: 'GET' | 'PATCH' | 'POST';
       body?: unknown;
     },
   ): Promise<T> {
@@ -95,7 +115,7 @@ export class AuthDirectoryService {
         method: options.method,
         headers: {
           ...headers,
-          ...(options.method === 'PATCH'
+          ...(options.method !== 'GET'
             ? { 'content-type': 'application/json' }
             : {}),
         },
