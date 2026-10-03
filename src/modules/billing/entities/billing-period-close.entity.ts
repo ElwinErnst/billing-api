@@ -14,7 +14,7 @@ export class BillingPeriodCloseEntity {
   id!: string;
 
   @Index()
-  @Column({ name: 'tenant_id', type: 'uuid' })
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
   tenantId!: string | null;
 
   @Column({ name: 'billing_account_id', type: 'uuid', nullable: true })
