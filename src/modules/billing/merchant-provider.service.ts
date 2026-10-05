@@ -194,7 +194,11 @@ export class MerchantProviderService {
       if (!subscription) return;
       const incomingEventAt = this.epochDate(eventCreatedAt);
       if (subscription.status === 'canceled' && status !== 'canceled') return;
-      if (incomingEventAt && subscription.providerEventCreatedAt && incomingEventAt <= subscription.providerEventCreatedAt) return;
+      if (incomingEventAt && subscription.providerEventCreatedAt) {
+        const eventTime = incomingEventAt.getTime();
+        const savedTime = subscription.providerEventCreatedAt.getTime();
+        if (eventTime < savedTime || (eventTime === savedTime && status !== 'canceled')) return;
+      }
       subscription.status = status;
       if (incomingEventAt) subscription.providerEventCreatedAt = incomingEventAt;
       subscription.canceledAt = status === 'canceled' ? (subscription.canceledAt ?? new Date()) : null;
