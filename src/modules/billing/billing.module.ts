@@ -13,6 +13,8 @@ import { MerchantProductEntity } from "./entities/merchant-product.entity";
 import { MerchantPriceEntity } from "./entities/merchant-price.entity";
 import { MerchantCustomerEntity } from "./entities/merchant-customer.entity";
 import { MerchantSubscriptionEntity } from "./entities/merchant-subscription.entity";
+import { MerchantProviderConnectionEntity } from "./entities/merchant-provider-connection.entity";
+import { MerchantProviderEventEntity } from "./entities/merchant-provider-event.entity";
 import { BillingUsageEventEntity } from "./entities/billing-usage-event.entity";
 import { ProviderConnectionEntity } from "./entities/provider-connection.entity";
 import { WebhookEndpointEntity } from "./entities/webhook-endpoint.entity";
@@ -22,6 +24,8 @@ import { WebhookEndpointsController } from "./webhook-endpoints.controller";
 import { BillingService } from "./billing.service";
 import { MerchantBillingController } from "./merchant-billing.controller";
 import { MerchantBillingService } from "./merchant-billing.service";
+import { MerchantProviderService } from "./merchant-provider.service";
+import { MerchantProviderController, MerchantProviderWebhookController } from "./merchant-provider.controller";
 import { ProviderConnectionService } from "./provider-connection.service";
 import { ProviderSecretResolver } from "./provider-secret.resolver";
 import { WebhookEndpointService } from "./webhook-endpoint.service";
@@ -41,6 +45,8 @@ import { AuditModule } from "../audit/audit.module";
       MerchantPriceEntity,
       MerchantCustomerEntity,
       MerchantSubscriptionEntity,
+      MerchantProviderConnectionEntity,
+      MerchantProviderEventEntity,
       BillingUsageEventEntity,
       ProviderConnectionEntity,
       WebhookEndpointEntity,
@@ -51,6 +57,8 @@ import { AuditModule } from "../audit/audit.module";
   controllers: [
     BillingController,
     MerchantBillingController,
+    MerchantProviderController,
+    MerchantProviderWebhookController,
     BillingInternalController,
     ProviderConnectionsController,
     WebhookEndpointsController,
@@ -58,6 +66,7 @@ import { AuditModule } from "../audit/audit.module";
   providers: [
     BillingService,
     MerchantBillingService,
+    MerchantProviderService,
     ProviderConnectionService,
     ProviderSecretResolver,
     WebhookEndpointService,

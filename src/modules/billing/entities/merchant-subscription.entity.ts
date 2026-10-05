@@ -12,6 +12,7 @@ export type MerchantSubscriptionStatus = 'active' | 'canceled';
 @Entity('merchant_subscriptions')
 @Index(['merchantId', 'status', 'currentPeriodEndsAt'])
 @Index(['merchantId', 'customerId', 'createdAt'])
+@Index('UQ_merchant_subscription_external_id', ['providerConnectionId', 'providerSubscriptionId'], { unique: true, where: 'provider_subscription_id IS NOT NULL' })
 export class MerchantSubscriptionEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -27,6 +28,15 @@ export class MerchantSubscriptionEntity {
 
   @Column({ name: 'price_id', type: 'uuid' })
   priceId!: string;
+
+  @Column({ name: 'provider_connection_id', type: 'uuid', nullable: true })
+  providerConnectionId!: string | null;
+
+  @Column({ name: 'provider_subscription_id', type: 'varchar', length: 191, nullable: true })
+  providerSubscriptionId!: string | null;
+
+  @Column({ name: 'provider_event_created_at', type: 'timestamptz', nullable: true })
+  providerEventCreatedAt!: Date | null;
 
   @Column({ name: 'status', type: 'varchar', length: 20, default: 'active' })
   status!: MerchantSubscriptionStatus;
