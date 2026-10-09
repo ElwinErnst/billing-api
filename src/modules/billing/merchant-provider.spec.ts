@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { createHmac } from 'crypto';
 import { ForbiddenException } from '@nestjs/common';
+import { PreApproval } from 'mercadopago';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import { MerchantAccountEntity } from './entities/merchant-account.entity';
 import { MerchantProviderConnectionEntity } from './entities/merchant-provider-connection.entity';
@@ -62,6 +63,13 @@ function harness() {
 
 const ownerA: AccessTokenPayload = { sub: 'owner-a', tenantId: 'tenant-a', roles: ['OWNER'] };
 const ownerB: AccessTokenPayload = { sub: 'owner-b', tenantId: 'tenant-b', roles: ['OWNER'] };
+
+function mpSigned(dataId: string, requestId: string) {
+  const ts = '1700000000';
+  const manifest = `id:${dataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
+  const signature = createHmac('sha256', 'mp_whsec_a').update(manifest).digest('hex');
+  return `ts=${ts},v1=${signature}`;
+}
 
 test('merchant provider secrets are encrypted at rest and never serialized', async () => {
   const { service, connections } = harness();
@@ -212,4 +220,31 @@ test('Mercado Pago replay key distinguishes notifications for one subscription b
   const second = mercadoPagoNotificationIdentity('ts=2,v1=signed-b', 'request-b');
   assert.notEqual(first, second);
   assert.equal(first, mercadoPagoNotificationIdentity('ts=1,v1=signed-a', 'request-a'));
+});
+
+test('Mercado Pago recovers pending subscriptions, keeps cancellation terminal, and rejects unknown statuses', async () => {
+  const { service, connections, subscriptions, events } = harness();
+  const connection = await service.createConnection(ownerA, 'merchant-a', { provider: 'mercadopago', accessSecret: 'mp_a', webhookSecret: 'mp_whsec_a' });
+  subscriptions.rows.push({ id: 'mp-sub', merchantId: 'merchant-a', providerConnectionId: connection.id, providerSubscriptionId: 'preapproval-1', status: 'incomplete', canceledAt: null });
+  subscriptions.rows.push({ id: 'mp-sub-unsupported', merchantId: 'merchant-a', providerConnectionId: connection.id, providerSubscriptionId: 'preapproval-2', status: 'paused', canceledAt: null });
+  const original = (PreApproval.prototype as any).get;
+  let providerStatus = 'authorized';
+  (PreApproval.prototype as any).get = async () => ({ status: providerStatus });
+  const send = (id: string, requestId: string) => service.handleMercadoPagoWebhook(connection.id, id, mpSigned(id, requestId), requestId, 'subscription_preapproval');
+  try {
+    await send('preapproval-1', 'mp-event-authorized');
+    assert.equal(subscriptions.rows[0].status, 'active');
+    providerStatus = 'cancelled';
+    await send('preapproval-1', 'mp-event-canceled');
+    providerStatus = 'authorized';
+    await send('preapproval-1', 'mp-event-late-authorized');
+    assert.equal(subscriptions.rows[0].status, 'canceled');
+    providerStatus = 'unknown';
+    await assert.rejects(send('preapproval-2', 'mp-event-unsupported'));
+    assert.equal(subscriptions.rows[1].status, 'paused');
+    assert.equal(events.rows.some((event) => event.providerEventId === mercadoPagoNotificationIdentity(mpSigned('preapproval-2', 'mp-event-unsupported'), 'mp-event-unsupported')), false);
+  } finally {
+    (PreApproval.prototype as any).get = original;
+  }
+  assert.ok(connections.rows.length);
 });
