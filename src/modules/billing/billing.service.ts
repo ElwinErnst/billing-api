@@ -1276,9 +1276,9 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     if (!customer) {
       customer = await this.customersRepo.save(
         this.customersRepo.create({
-          // Keep a tenant reference for legacy reports/rollback while the
-          // account ID remains the authoritative billing owner.
-          tenantId: owner.coveredTenantIds?.[0] ?? null,
+          // Account customers have their own identity; a covered tenant may
+          // already own a distinct direct-billing customer row.
+          tenantId: null,
           billingAccountId,
           provider: this.billing.provider,
           providerCustomerId: null,
@@ -1310,6 +1310,10 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!subscription) {
+      return;
+    }
+
+    if (this.isAbandonedPendingCheckout(subscription)) {
       return;
     }
 
@@ -1365,6 +1369,10 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    if (this.isAbandonedPendingCheckout(subscription)) {
+      return;
+    }
+
     subscription.provider = 'stripe';
     subscription.providerSubscriptionId = stripeSubscription.id;
     subscription.status = this.mapStripeStatus(stripeSubscription.status);
@@ -1413,6 +1421,10 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       // may be a one-off payment intent (standalone consumer flow).
       await this.reconcileOneOffPaymentIntent(localSubscriptionId, payment);
       return null;
+    }
+
+    if (this.isAbandonedPendingCheckout(subscription)) {
+      return subscription;
     }
 
     // Capture pre-mutation state so we can detect a replayed payment.
@@ -1550,6 +1562,13 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     return tenant?.billingBypass === true;
   }
 
+  private isAbandonedPendingCheckout(subscription: BillingSubscriptionEntity) {
+    return subscription.status === 'CANCELED' &&
+      subscription.providerSubscriptionId === null &&
+      subscription.providerCheckoutSessionId === null &&
+      subscription.checkoutUrl === null;
+  }
+
   private async findSubscriptionIdByProviderId(providerSubscriptionId: string) {
     const row = await this.subscriptionsRepo.findOne({
       where: { providerSubscriptionId },
@@ -1652,38 +1671,44 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         : [];
     if (tenantIds.length === 0) return;
 
-    const offer = this.findOffer(
-      subscription.industryPackage as BillingIndustryCode,
-      subscription.basePlan as BillingTierCode,
-    );
-
-    const auditRetentionDays = this.readAuditRetentionDays(
-      subscription.basePlan as BillingTierCode,
-    );
-
     const isCanceled = subscription.status === 'CANCELED';
-    const normalizedAddOns = isCanceled
-      ? []
-      : this.normalizeAddOns(subscription.apiAddons);
-    const authApiIncluded = normalizedAddOns.includes('AUTH_API');
-    const apiLimits = this.readApiIntegrationLimits(
-      subscription.basePlan as BillingTierCode,
-      normalizedAddOns,
-    );
 
     for (const tenantId of tenantIds) {
       if (await this.isBillingBypassEnabled(tenantId)) continue;
+      const replacement = isCanceled
+        ? await this.findActiveSubscriptionForTenant(tenantId, subscription.id)
+        : null;
+      const effectiveSubscription = replacement ?? subscription;
+      const effectiveIsCanceled = effectiveSubscription.status === 'CANCELED';
+      const effectiveOffer = effectiveIsCanceled
+        ? this.findOffer(
+            subscription.industryPackage as BillingIndustryCode,
+            subscription.basePlan as BillingTierCode,
+          )
+        : this.findOffer(
+            effectiveSubscription.industryPackage as BillingIndustryCode,
+            effectiveSubscription.basePlan as BillingTierCode,
+          );
+      const effectiveAddOns = effectiveIsCanceled
+        ? []
+        : this.normalizeAddOns(effectiveSubscription.apiAddons);
+      const effectiveApiLimits = this.readApiIntegrationLimits(
+        effectiveSubscription.basePlan as BillingTierCode,
+        effectiveAddOns,
+      );
       await this.authDirectory.updateTenantBillingProfile(tenantId, {
-        planCode: isCanceled ? 'FREE' : subscription.basePlan,
-        vaultsEnabled: !isCanceled,
-        ztPoliciesEnabled: !isCanceled && offer.limits.ztMode !== 'basic' ? true : !isCanceled,
-        maxVaults: isCanceled ? 1 : offer.limits.maxVaults ?? 0,
-        maxUsers: isCanceled ? 3 : offer.limits.maxUsers,
-        monthlyNotaryRequests: isCanceled ? 0 : offer.limits.monthlyNotaryRequests ?? 0,
-        auditRetentionDays: isCanceled ? 30 : auditRetentionDays,
-        maxClientApps: authApiIncluded ? apiLimits.maxClientApps : 0,
-        maxServiceAccounts: authApiIncluded ? apiLimits.maxServiceAccounts : 0,
-        apiAddons: normalizedAddOns,
+        planCode: effectiveIsCanceled ? 'FREE' : effectiveSubscription.basePlan,
+        vaultsEnabled: !effectiveIsCanceled,
+        ztPoliciesEnabled: !effectiveIsCanceled,
+        maxVaults: effectiveIsCanceled ? 1 : effectiveOffer.limits.maxVaults ?? 0,
+        maxUsers: effectiveIsCanceled ? 3 : effectiveOffer.limits.maxUsers,
+        monthlyNotaryRequests: effectiveIsCanceled ? 0 : effectiveOffer.limits.monthlyNotaryRequests ?? 0,
+        auditRetentionDays: effectiveIsCanceled
+          ? 30
+          : this.readAuditRetentionDays(effectiveSubscription.basePlan as BillingTierCode),
+        maxClientApps: effectiveAddOns.includes('AUTH_API') ? effectiveApiLimits.maxClientApps : 0,
+        maxServiceAccounts: effectiveAddOns.includes('AUTH_API') ? effectiveApiLimits.maxServiceAccounts : 0,
+        apiAddons: effectiveAddOns,
       });
 
       await this.audit.emit({
@@ -1697,12 +1722,29 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         resourceId: subscription.id,
         outcome: 'success',
         detail: {
-          plan: isCanceled ? 'FREE' : subscription.basePlan,
-          status: subscription.status,
-          billingAccountId: subscription.billingAccountId,
+          plan: effectiveIsCanceled ? 'FREE' : effectiveSubscription.basePlan,
+          status: effectiveSubscription.status,
+          billingAccountId: effectiveSubscription.billingAccountId,
+          subscriptionId: effectiveSubscription.id,
         },
       });
     }
+  }
+
+  private async findActiveSubscriptionForTenant(
+    tenantId: string,
+    excludingSubscriptionId: string,
+  ) {
+    const activeSubscriptions = await this.subscriptionsRepo.find({
+      where: { status: 'ACTIVE' },
+      order: { activatedAt: 'DESC', createdAt: 'DESC' },
+    });
+    return activeSubscriptions.find((candidate) =>
+      candidate.id !== excludingSubscriptionId &&
+      (candidate.tenantId === tenantId ||
+        (candidate.billingAccountId != null &&
+          candidate.coveredTenantIds?.includes(tenantId))),
+    ) ?? null;
   }
 
   private readAuditRetentionDays(tier: BillingTierCode) {
@@ -1797,28 +1839,32 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const ownerWhere = owner.billingAccountId
       ? { billingAccountId: owner.billingAccountId }
       : { tenantId: owner.tenantId!, billingAccountId: IsNull() };
-    const pendingSubscription = await this.subscriptionsRepo.findOne({
+    const pendingSubscriptions = await this.subscriptionsRepo.find({
       where: { ...ownerWhere, status: 'PENDING' },
       order: { createdAt: 'DESC' },
     });
-
-    if (
-      !pendingSubscription ||
-      !pendingSubscription.checkoutUrl ||
-      pendingSubscription.provider !== this.billing.provider ||
-      pendingSubscription.organizationId !== owner.organizationId ||
-      pendingSubscription.billingAccountId !== owner.billingAccountId ||
-      !this.haveSameCoveredTenants(
-        pendingSubscription.coveredTenantIds,
-        owner.coveredTenantIds,
-      ) ||
-      pendingSubscription.basePlan !== dto.tier ||
-      pendingSubscription.industryPackage !== dto.industry ||
-      pendingSubscription.billingCycle !== dto.billingCycle ||
-      pendingSubscription.seats !== seats ||
-      !this.haveSameAddOns(pendingSubscription.apiAddons, addOns)
-    ) {
+    const pendingSubscription = pendingSubscriptions.find((pending) =>
+      pending.checkoutUrl &&
+      pending.provider === this.billing.provider &&
+      pending.organizationId === owner.organizationId &&
+      pending.billingAccountId === owner.billingAccountId &&
+      this.haveSameCoveredTenants(pending.coveredTenantIds, owner.coveredTenantIds) &&
+      pending.basePlan === dto.tier &&
+      pending.industryPackage === dto.industry &&
+      pending.billingCycle === dto.billingCycle &&
+      pending.seats === seats &&
+      this.haveSameAddOns(pending.apiAddons, addOns),
+    );
+    if (!pendingSubscription) {
+      for (const stalePending of pendingSubscriptions) {
+        await this.abandonPendingCheckout(stalePending);
+      }
       return null;
+    }
+    for (const stalePending of pendingSubscriptions) {
+      if (stalePending.id !== pendingSubscription.id) {
+        await this.abandonPendingCheckout(stalePending);
+      }
     }
 
     return {
@@ -1838,6 +1884,60 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         ? await this.findOrCreateBillingAccountCustomer(owner, dto)
         : await this.findOrCreateCustomer(owner.tenantId!, dto),
     };
+  }
+
+  private async abandonPendingCheckout(subscription: BillingSubscriptionEntity) {
+    if (subscription.provider === 'stripe') {
+      if (!subscription.providerCheckoutSessionId) {
+        throw new ForbiddenException('The pending checkout cannot be safely replaced yet');
+      }
+      const sessions = this.getStripe().checkout.sessions;
+      let session = await sessions.retrieve(subscription.providerCheckoutSessionId);
+      if (session.status === 'complete') {
+        throw new ForbiddenException('A completed checkout cannot be replaced');
+      }
+      if (session.status === 'open') {
+        session = await sessions.expire(subscription.providerCheckoutSessionId);
+      }
+      if (session.status !== 'expired') {
+        throw new ForbiddenException('The provider has not confirmed checkout expiration');
+      }
+    } else if (subscription.provider === 'mercadopago') {
+      if (!subscription.providerCheckoutSessionId) {
+        throw new ForbiddenException('The pending checkout cannot be safely replaced yet');
+      }
+      const preferenceClient = this.getMercadoPagoPreference();
+      const expiresAt = new Date(Date.now() - 1000).toISOString();
+      const preference = await preferenceClient.get({
+        preferenceId: subscription.providerCheckoutSessionId,
+      });
+      if (preference.expires && preference.expiration_date_to &&
+          new Date(preference.expiration_date_to).getTime() <= Date.now()) {
+        // The provider confirms this preference is already expired.
+      } else {
+        const expiredPreference = await preferenceClient.update({
+          id: subscription.providerCheckoutSessionId,
+          updatePreferenceRequest: {
+            items: preference.items ?? [],
+            expires: true,
+            expiration_date_to: expiresAt,
+          },
+        });
+        if (!expiredPreference.expires || !expiredPreference.expiration_date_to ||
+            new Date(expiredPreference.expiration_date_to).getTime() > Date.now()) {
+          throw new ForbiddenException('The provider has not confirmed checkout expiration');
+        }
+      }
+    } else if (subscription.providerCheckoutSessionId?.startsWith('mock_chk_')) {
+      // Local mock activation is guarded by this token and PENDING state.
+    } else {
+      throw new ForbiddenException('This pending checkout provider cannot be safely replaced');
+    }
+
+    subscription.status = 'CANCELED';
+    subscription.checkoutUrl = null;
+    subscription.providerCheckoutSessionId = null;
+    await this.subscriptionsRepo.save(subscription);
   }
 
   private async assertNoConflictingActiveSubscription(
@@ -1862,7 +1962,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         where: {
           tenantId: In(owner.coveredTenantIds),
           billingAccountId: IsNull(),
-          status: 'ACTIVE',
+          status: In(['ACTIVE', 'PENDING']),
         },
         order: { createdAt: 'DESC' },
       });
@@ -1874,8 +1974,23 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const accountSubscriptions = await this.subscriptionsRepo.find({
+      where: {
+        billingAccountId: Not(IsNull()),
+        status: In(['ACTIVE', 'PENDING']),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (accountSubscriptions.some((candidate) =>
+      candidate.coveredTenantIds?.includes(owner.tenantId!),
+    )) {
+      throw new ForbiddenException(
+        'This tenant is already covered by an organization platform subscription or pending checkout',
+      );
+    }
+
     const activeSubscription = await this.subscriptionsRepo.findOne({
-      where: { tenantId: owner.tenantId!, billingAccountId: IsNull(), status: 'ACTIVE' },
+      where: { tenantId: owner.tenantId!, billingAccountId: IsNull(), status: In(['ACTIVE', 'PENDING']) },
       order: { createdAt: 'DESC' },
     });
 

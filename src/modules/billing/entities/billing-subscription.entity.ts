@@ -11,7 +11,7 @@ export class BillingSubscriptionEntity {
   id!: string;
 
   @Index()
-  @Column({ name: 'tenant_id', type: 'uuid' })
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
   tenantId!: string | null;
 
   @Index('IDX_billing_subscriptions_billing_account_id')
