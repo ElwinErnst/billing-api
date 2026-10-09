@@ -153,6 +153,25 @@ test('older signed Stripe event cannot reactivate a subscription after a newer c
   assert.equal(subscriptions.rows[0].providerEventCreatedAt.toISOString(), new Date(200 * 1000).toISOString());
 });
 
+test('a newer Stripe activation recovers a subscription from past_due without bypassing cancellation guards', async () => {
+  const { service, subscriptions } = harness();
+  const connection = await service.createConnection(ownerA, 'merchant-a', { provider: 'stripe', accessSecret: 'sk_a', webhookSecret: 'whsec_a' });
+  subscriptions.rows.push({
+    id: 'sub-recover', merchantId: 'merchant-a', providerConnectionId: connection.id,
+    providerSubscriptionId: 'sub_external_recover', status: 'active', canceledAt: null, providerEventCreatedAt: null,
+  });
+  const send = async (id: string, status: string, created: number) => {
+    const raw = Buffer.from(JSON.stringify({ id, type: 'customer.subscription.updated', created, data: { object: { id: 'sub_external_recover', status } } }));
+    const ts = Math.floor(Date.now() / 1000);
+    const signature = `t=${ts},v1=${createHmac('sha256', 'whsec_a').update(`${ts}.${raw.toString()}`).digest('hex')}`;
+    await service.handleStripeWebhook(connection.id, raw, signature);
+  };
+  await send('evt-past-due', 'past_due', 100);
+  assert.equal(subscriptions.rows[0].status, 'past_due');
+  await send('evt-recovered', 'active', 200);
+  assert.equal(subscriptions.rows[0].status, 'active');
+});
+
 test('Mercado Pago rejects an event signed for a different merchant connection before recording it', async () => {
   const { service, events } = harness();
   const connection = await service.createConnection(ownerA, 'merchant-a', { provider: 'mercadopago', accessSecret: 'mp_a', webhookSecret: 'mp_whsec_a' });

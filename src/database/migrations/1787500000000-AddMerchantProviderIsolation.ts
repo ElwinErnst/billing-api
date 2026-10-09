@@ -31,6 +31,8 @@ export class AddMerchantProviderIsolation1787500000000 implements MigrationInter
     await queryRunner.query(`ALTER TABLE "merchant_subscriptions" ADD COLUMN "provider_connection_id" uuid`);
     await queryRunner.query(`ALTER TABLE "merchant_subscriptions" ADD COLUMN "provider_subscription_id" character varying(191)`);
     await queryRunner.query(`ALTER TABLE "merchant_subscriptions" ADD COLUMN "provider_event_created_at" TIMESTAMPTZ`);
+    await queryRunner.query(`ALTER TABLE "merchant_subscriptions" DROP CONSTRAINT "CHK_merchant_subscriptions_status"`);
+    await queryRunner.query(`ALTER TABLE "merchant_subscriptions" ADD CONSTRAINT "CHK_merchant_subscriptions_status" CHECK ("status" IN ('active', 'trialing', 'past_due', 'unpaid', 'incomplete', 'paused', 'canceled'))`);
     await queryRunner.query(`ALTER TABLE "merchant_subscriptions" ADD CONSTRAINT "FK_merchant_subscriptions_provider_connection" FOREIGN KEY ("merchant_id", "provider_connection_id") REFERENCES "merchant_provider_connections"("merchant_id", "id") ON DELETE RESTRICT`);
     await queryRunner.query(`CREATE UNIQUE INDEX "UQ_merchant_subscription_external_id" ON "merchant_subscriptions" ("provider_connection_id", "provider_subscription_id") WHERE "provider_subscription_id" IS NOT NULL`);
     await queryRunner.query(`CREATE TABLE "merchant_provider_events" (
@@ -47,6 +49,9 @@ export class AddMerchantProviderIsolation1787500000000 implements MigrationInter
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`UPDATE "merchant_subscriptions" SET "status" = 'active' WHERE "status" IN ('trialing', 'past_due', 'unpaid', 'incomplete', 'paused')`);
+    await queryRunner.query(`ALTER TABLE "merchant_subscriptions" DROP CONSTRAINT "CHK_merchant_subscriptions_status"`);
+    await queryRunner.query(`ALTER TABLE "merchant_subscriptions" ADD CONSTRAINT "CHK_merchant_subscriptions_status" CHECK ("status" IN ('active', 'canceled'))`);
     await queryRunner.query(`DROP TABLE "merchant_provider_events"`);
     await queryRunner.query(`DROP INDEX "UQ_merchant_subscription_external_id"`);
     await queryRunner.query(`ALTER TABLE "merchant_subscriptions" DROP CONSTRAINT "FK_merchant_subscriptions_provider_connection"`);

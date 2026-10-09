@@ -7,7 +7,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type MerchantSubscriptionStatus = 'active' | 'canceled';
+export type MerchantSubscriptionStatus =
+  | 'active'
+  | 'trialing'
+  | 'past_due'
+  | 'unpaid'
+  | 'incomplete'
+  | 'paused'
+  | 'canceled';
 
 @Entity('merchant_subscriptions')
 @Index(['merchantId', 'status', 'currentPeriodEndsAt'])
