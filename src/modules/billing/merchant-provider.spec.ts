@@ -172,6 +172,31 @@ test('a newer Stripe activation recovers a subscription from past_due without by
   assert.equal(subscriptions.rows[0].status, 'active');
 });
 
+test('terminal cancellation wins equal-timestamp Stripe events in either arrival order', async () => {
+  for (const recoverable of ['active', 'past_due']) {
+    for (const reverse of [false, true]) {
+      const { service, subscriptions } = harness();
+      const connection = await service.createConnection(ownerA, 'merchant-a', { provider: 'stripe', accessSecret: 'sk_a', webhookSecret: 'whsec_a' });
+      subscriptions.rows.push({
+        id: 'sub-tie', merchantId: 'merchant-a', providerConnectionId: connection.id,
+        providerSubscriptionId: 'sub_external_tie', status: 'active', canceledAt: null, providerEventCreatedAt: null,
+      });
+      const send = async (id: string, status: string) => {
+        const canceled = status === 'canceled';
+        const type = canceled ? 'customer.subscription.deleted' : 'customer.subscription.updated';
+        const raw = Buffer.from(JSON.stringify({ id, type, created: 100, data: { object: { id: 'sub_external_tie', status } } }));
+        const ts = Math.floor(Date.now() / 1000);
+        const signature = `t=${ts},v1=${createHmac('sha256', 'whsec_a').update(`${ts}.${raw.toString()}`).digest('hex')}`;
+        await service.handleStripeWebhook(connection.id, raw, signature);
+      };
+      for (const status of reverse ? ['canceled', recoverable] : [recoverable, 'canceled']) {
+        await send(`evt-${status}-${reverse}`, status);
+      }
+      assert.equal(subscriptions.rows[0].status, 'canceled', `${recoverable}, reverse=${reverse}`);
+    }
+  }
+});
+
 test('Mercado Pago rejects an event signed for a different merchant connection before recording it', async () => {
   const { service, events } = harness();
   const connection = await service.createConnection(ownerA, 'merchant-a', { provider: 'mercadopago', accessSecret: 'mp_a', webhookSecret: 'mp_whsec_a' });
