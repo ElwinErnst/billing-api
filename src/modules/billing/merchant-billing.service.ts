@@ -17,6 +17,7 @@ import { MerchantCustomerEntity } from './entities/merchant-customer.entity';
 import { MerchantPriceEntity } from './entities/merchant-price.entity';
 import { MerchantProductEntity } from './entities/merchant-product.entity';
 import { MerchantSubscriptionEntity } from './entities/merchant-subscription.entity';
+import { MerchantProviderConnectionEntity } from './entities/merchant-provider-connection.entity';
 
 @Injectable()
 export class MerchantBillingService {
@@ -31,6 +32,8 @@ export class MerchantBillingService {
     private readonly customersRepo: Repository<MerchantCustomerEntity>,
     @InjectRepository(MerchantSubscriptionEntity)
     private readonly subscriptionsRepo: Repository<MerchantSubscriptionEntity>,
+    @InjectRepository(MerchantProviderConnectionEntity)
+    private readonly providerConnectionsRepo: Repository<MerchantProviderConnectionEntity>,
   ) {}
 
   async createMerchant(auth: AccessTokenPayload, dto: CreateMerchantAccountDto) {
@@ -181,6 +184,15 @@ export class MerchantBillingService {
     dto: CreateMerchantSubscriptionDto,
   ) {
     await this.requireMerchant(auth, merchantId);
+    if (Boolean(dto.providerConnectionId) !== Boolean(dto.providerSubscriptionId)) {
+      throw new ConflictException('Provider connection and subscription ID must be supplied together');
+    }
+    if (dto.providerConnectionId) {
+      const providerConnection = await this.providerConnectionsRepo.findOne({
+        where: { id: dto.providerConnectionId, merchantId, status: 'active' },
+      });
+      if (!providerConnection) throw new NotFoundException('Active merchant provider connection not found');
+    }
     const [customer, price] = await Promise.all([
       this.customersRepo.findOne({ where: { id: dto.customerId, merchantId } }),
       this.pricesRepo.findOne({
@@ -202,6 +214,8 @@ export class MerchantBillingService {
         customerId: customer.id,
         productId: product.id,
         priceId: price.id,
+        providerConnectionId: dto.providerConnectionId ?? null,
+        providerSubscriptionId: dto.providerSubscriptionId?.trim() || null,
         status: 'active',
         currentPeriodStartedAt: startedAt,
         currentPeriodEndsAt: this.nextPeriodEnd(startedAt, price.billingInterval),
@@ -330,6 +344,8 @@ export class MerchantBillingService {
       customerId: subscription.customerId,
       productId: subscription.productId,
       priceId: subscription.priceId,
+      providerConnectionId: subscription.providerConnectionId,
+      providerSubscriptionId: subscription.providerSubscriptionId,
       status: subscription.status,
       currentPeriodStartedAt: subscription.currentPeriodStartedAt,
       currentPeriodEndsAt: subscription.currentPeriodEndsAt,
