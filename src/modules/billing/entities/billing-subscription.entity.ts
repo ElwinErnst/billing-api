@@ -5,13 +5,27 @@ export type BillingCycle = 'monthly' | 'yearly';
 
 @Entity('billing_subscriptions')
 @Index(['tenantId', 'createdAt'])
+@Index('IDX_billing_subscriptions_billing_account_created', ['billingAccountId', 'createdAt'])
 export class BillingSubscriptionEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
   @Index()
   @Column({ name: 'tenant_id', type: 'uuid' })
-  tenantId!: string;
+  tenantId!: string | null;
+
+  @Index('IDX_billing_subscriptions_billing_account_id')
+  @Column({ name: 'billing_account_id', type: 'uuid', nullable: true })
+  billingAccountId!: string | null;
+
+  @Column({ name: 'organization_id', type: 'uuid', nullable: true })
+  organizationId!: string | null;
+
+  @Column({ name: 'covered_tenant_ids', type: 'simple-json', nullable: true })
+  coveredTenantIds!: string[] | null;
+
+  @Column({ name: 'subscription_domain', type: 'varchar', length: 20, default: 'PLATFORM' })
+  subscriptionDomain!: 'PLATFORM';
 
   // Ownership below the tenant. Nullable: the tenant's own Sytadel plan
   // (domain A, dashboard) stays tenant-level (null); populated for

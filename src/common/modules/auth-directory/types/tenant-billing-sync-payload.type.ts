@@ -18,3 +18,9 @@ export type RemoteTenantSummary = {
   planCode: string | null;
   billingBypass?: boolean;
 };
+
+export type PlatformSubscriptionAuthorization = {
+  organizationId: string;
+  billingAccountId: string;
+  coveredTenantIds: string[];
+};
