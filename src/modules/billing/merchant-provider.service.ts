@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -119,19 +120,20 @@ export class MerchantProviderService {
     try {
       const provider = new MercadoPagoConfig({ accessToken: secrets.accessSecret });
       const preApproval = await new PreApproval(provider).get({ id: dataId });
-    const notificationId = mercadoPagoNotificationIdentity(signature!, requestId!);
+      const status = this.mercadoPagoStatus(preApproval.status);
+      if (!status) throw new BadGatewayException('Unsupported Mercado Pago subscription status');
+      const notificationId = mercadoPagoNotificationIdentity(signature!, requestId!);
     await this.applySubscriptionEvent(
         connection,
         notificationId,
         eventType,
         dataId,
-        preApproval.status === 'authorized' ? 'active' : 'canceled',
+        status,
         preApproval.date_created ? Date.parse(preApproval.date_created) / 1000 : undefined,
         preApproval.next_payment_date ? Date.parse(preApproval.next_payment_date) / 1000 : undefined,
-        Date.now() / 1000,
       );
     } catch (error) {
-      if (error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
+      if (error instanceof BadGatewayException || error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Mercado Pago webhook resource could not be verified');
     }
     return { received: true };
@@ -194,7 +196,11 @@ export class MerchantProviderService {
       if (!subscription) return;
       const incomingEventAt = this.epochDate(eventCreatedAt);
       if (subscription.status === 'canceled' && status !== 'canceled') return;
-      if (incomingEventAt && subscription.providerEventCreatedAt && incomingEventAt <= subscription.providerEventCreatedAt) return;
+      if (incomingEventAt && subscription.providerEventCreatedAt) {
+        const eventTime = incomingEventAt.getTime();
+        const savedTime = subscription.providerEventCreatedAt.getTime();
+        if (eventTime < savedTime || (eventTime === savedTime && status !== 'canceled')) return;
+      }
       subscription.status = status;
       if (incomingEventAt) subscription.providerEventCreatedAt = incomingEventAt;
       subscription.canceledAt = status === 'canceled' ? (subscription.canceledAt ?? new Date()) : null;
@@ -211,6 +217,14 @@ export class MerchantProviderService {
     if (['active', 'trialing', 'past_due', 'unpaid', 'incomplete', 'paused'].includes(String(rawStatus))) {
       return rawStatus as MerchantSubscriptionStatus;
     }
+    return null;
+  }
+
+  private mercadoPagoStatus(status: unknown): MerchantSubscriptionStatus | null {
+    if (status === 'authorized') return 'active';
+    if (status === 'cancelled') return 'canceled';
+    if (status === 'pending') return 'incomplete';
+    if (status === 'paused') return 'paused';
     return null;
   }
 
