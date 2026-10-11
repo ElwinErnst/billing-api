@@ -1,4 +1,4 @@
-import { IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateMerchantSubscriptionDto {
   @IsUUID()
@@ -6,4 +6,13 @@ export class CreateMerchantSubscriptionDto {
 
   @IsUUID()
   priceId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  providerConnectionId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(191)
+  providerSubscriptionId?: string;
 }

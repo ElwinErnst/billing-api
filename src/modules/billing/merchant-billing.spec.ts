@@ -36,12 +36,14 @@ function createService() {
   const prices = memoryRepository();
   const customers = memoryRepository();
   const subscriptions = memoryRepository();
+  const providerConnections = memoryRepository();
   const service = new MerchantBillingService(
     merchants as any,
     products as any,
     prices as any,
     customers as any,
     subscriptions as any,
+    providerConnections as any,
   );
   return { service, merchants, products, prices, customers, subscriptions };
 }
