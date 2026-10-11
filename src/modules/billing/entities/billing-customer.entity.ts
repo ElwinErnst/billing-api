@@ -5,9 +5,16 @@ export class BillingCustomerEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Index({ unique: true })
-  @Column({ name: 'tenant_id', type: 'uuid' })
-  tenantId!: string;
+  @Index('IDX_billing_customers_tenant_id', { unique: true, where: '"tenant_id" IS NOT NULL' })
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
+  tenantId!: string | null;
+
+  @Index('IDX_billing_customers_billing_account_id', {
+    unique: true,
+    where: '"billing_account_id" IS NOT NULL',
+  })
+  @Column({ name: 'billing_account_id', type: 'uuid', nullable: true })
+  billingAccountId!: string | null;
 
   @Column({ name: 'provider', type: 'varchar', length: 30, default: 'mock' })
   provider!: string;

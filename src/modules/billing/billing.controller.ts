@@ -21,6 +21,7 @@ import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
 import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { CreatePlatformCheckoutSessionDto } from './dto/create-platform-checkout-session.dto';
 import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
 import { UsageReportQueryDto } from './dto/usage-report-query.dto';
 import { ListApplicationRecordsQueryDto } from './dto/list-application-records-query.dto';
@@ -114,6 +115,15 @@ export class BillingController {
     return this.billingService.createCheckoutSession(auth, dto);
   }
 
+  @Post('platform/checkout-sessions')
+  @UseGuards(AccessJwtGuard)
+  createPlatformCheckoutSession(
+    @CurrentAuth() auth: AccessTokenPayload,
+    @Body() dto: CreatePlatformCheckoutSessionDto,
+  ) {
+    return this.billingService.createPlatformCheckoutSession(auth, dto);
+  }
+
   @Post('one-off-checkout')
   @UseGuards(AccessJwtGuard, ScopesGuard)
   @RequireScopes('payments:create')
@@ -128,6 +138,18 @@ export class BillingController {
   @UseGuards(AccessJwtGuard)
   scheduleCancellation(@CurrentAuth() auth: AccessTokenPayload) {
     return this.billingService.scheduleCancellation(auth);
+  }
+
+  @Post('platform/subscriptions/:subscriptionId/cancel')
+  @UseGuards(AccessJwtGuard)
+  schedulePlatformSubscriptionCancellation(
+    @CurrentAuth() auth: AccessTokenPayload,
+    @Param('subscriptionId') subscriptionId: string,
+  ) {
+    return this.billingService.schedulePlatformSubscriptionCancellation(
+      auth,
+      subscriptionId,
+    );
   }
 
   // Payment-provider webhooks must never be rate-limited: dropping a delivery
