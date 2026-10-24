@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { BillingService } from './billing.service';
 
-const auth = { sub: 'user-1', tenantId: 'current-tenant', roles: ['OWNER'] } as const;
+const auth = { userId: 'user-1', tenantId: 'current-tenant', roles: ['OWNER'] } as const;
 const input = {
   organizationId: 'org-1',
   billingAccountId: 'billing-1',

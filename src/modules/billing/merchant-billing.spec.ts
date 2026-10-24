@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext } from '@elwinernst/nest-auth';
 import { MerchantBillingService } from './merchant-billing.service';
 
 function memoryRepository() {
@@ -48,8 +48,8 @@ function createService() {
   return { service, merchants, products, prices, customers, subscriptions };
 }
 
-const tenantOwner: AccessTokenPayload = {
-  sub: 'owner-user',
+const tenantOwner: AuthContext = {
+  userId: 'owner-user',
   tenantId: 'saas-tenant',
   roles: ['OWNER'],
 };

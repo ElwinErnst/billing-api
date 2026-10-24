@@ -8,9 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext, CurrentAuth } from '@elwinernst/nest-auth';
 import { WebhookEndpointService } from './webhook-endpoint.service';
 import { CreateWebhookEndpointDto } from './dto/create-webhook-endpoint.dto';
 
@@ -25,21 +24,21 @@ import { CreateWebhookEndpointDto } from './dto/create-webhook-endpoint.dto';
 export class WebhookEndpointsController {
   constructor(private readonly endpoints: WebhookEndpointService) {}
 
-  private assertOwner(auth: AccessTokenPayload) {
+  private assertOwner(auth: AuthContext) {
     if (!auth.roles.includes('OWNER')) {
       throw new ForbiddenException('Only tenant owners can manage billing');
     }
   }
 
   @Get()
-  list(@CurrentAuth() auth: AccessTokenPayload) {
+  list(@CurrentAuth() auth: AuthContext) {
     this.assertOwner(auth);
     return this.endpoints.list(auth.tenantId);
   }
 
   @Post()
   create(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Body() dto: CreateWebhookEndpointDto,
   ) {
     this.assertOwner(auth);
@@ -47,7 +46,7 @@ export class WebhookEndpointsController {
   }
 
   @Post(':id/disable')
-  disable(@CurrentAuth() auth: AccessTokenPayload, @Param('id') id: string) {
+  disable(@CurrentAuth() auth: AuthContext, @Param('id') id: string) {
     this.assertOwner(auth);
     return this.endpoints.disable(auth.tenantId, id);
   }

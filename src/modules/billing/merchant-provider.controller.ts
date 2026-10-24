@@ -1,9 +1,8 @@
 import { Body, Controller, Get, Headers, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext, CurrentAuth } from '@elwinernst/nest-auth';
 import { CreateMerchantProviderConnectionDto } from './dto/create-merchant-provider-connection.dto';
 import { MerchantProviderService } from './merchant-provider.service';
 
@@ -14,17 +13,17 @@ export class MerchantProviderController {
   constructor(private readonly providers: MerchantProviderService) {}
 
   @Post()
-  create(@CurrentAuth() auth: AccessTokenPayload, @Param('merchantId') merchantId: string, @Body() dto: CreateMerchantProviderConnectionDto) {
+  create(@CurrentAuth() auth: AuthContext, @Param('merchantId') merchantId: string, @Body() dto: CreateMerchantProviderConnectionDto) {
     return this.providers.createConnection(auth, merchantId, dto);
   }
 
   @Get()
-  list(@CurrentAuth() auth: AccessTokenPayload, @Param('merchantId') merchantId: string) {
+  list(@CurrentAuth() auth: AuthContext, @Param('merchantId') merchantId: string) {
     return this.providers.listConnections(auth, merchantId);
   }
 
   @Post(':connectionId/disable')
-  disable(@CurrentAuth() auth: AccessTokenPayload, @Param('merchantId') merchantId: string, @Param('connectionId') connectionId: string) {
+  disable(@CurrentAuth() auth: AuthContext, @Param('merchantId') merchantId: string, @Param('connectionId') connectionId: string) {
     return this.providers.disableConnection(auth, merchantId, connectionId);
   }
 }

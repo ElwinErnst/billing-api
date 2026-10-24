@@ -15,11 +15,10 @@ import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
-import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
 import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext, CurrentAuth } from '@elwinernst/nest-auth';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreatePlatformCheckoutSessionDto } from './dto/create-platform-checkout-session.dto';
 import { CreateOneOffCheckoutDto } from './dto/create-one-off-checkout.dto';
@@ -63,20 +62,20 @@ export class BillingController {
 
   @Get('subscription')
   @UseGuards(AccessJwtGuard)
-  getSubscription(@CurrentAuth() auth: AccessTokenPayload) {
+  getSubscription(@CurrentAuth() auth: AuthContext) {
     return this.billingService.getTenantBillingOverview(auth.tenantId);
   }
 
   @Post('portal-sessions')
   @UseGuards(AccessJwtGuard)
-  createPortalSession(@CurrentAuth() auth: AccessTokenPayload) {
+  createPortalSession(@CurrentAuth() auth: AuthContext) {
     return this.billingService.createPortalSession(auth);
   }
 
   @Get('usage/by-application')
   @UseGuards(AccessJwtGuard)
   getUsageByApplication(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Query() query: UsageReportQueryDto,
   ) {
     return this.billingService.getUsageByApplication(auth, query);
@@ -85,7 +84,7 @@ export class BillingController {
   @Get('applications/:clientAppId/payments')
   @UseGuards(AccessJwtGuard)
   listApplicationPayments(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('clientAppId') clientAppId: string,
     @Query() query: ListApplicationRecordsQueryDto,
   ) {
@@ -95,7 +94,7 @@ export class BillingController {
   @Get('applications/:clientAppId/subscriptions')
   @UseGuards(AccessJwtGuard)
   listApplicationSubscriptions(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('clientAppId') clientAppId: string,
     @Query() query: ListApplicationRecordsQueryDto,
   ) {
@@ -109,7 +108,7 @@ export class BillingController {
   @Post('checkout-sessions')
   @UseGuards(AccessJwtGuard)
   createCheckoutSession(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Body() dto: CreateCheckoutSessionDto,
   ) {
     return this.billingService.createCheckoutSession(auth, dto);
@@ -118,7 +117,7 @@ export class BillingController {
   @Post('platform/checkout-sessions')
   @UseGuards(AccessJwtGuard)
   createPlatformCheckoutSession(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Body() dto: CreatePlatformCheckoutSessionDto,
   ) {
     return this.billingService.createPlatformCheckoutSession(auth, dto);
@@ -128,7 +127,7 @@ export class BillingController {
   @UseGuards(AccessJwtGuard, ScopesGuard)
   @RequireScopes('payments:create')
   createOneOffCheckout(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Body() dto: CreateOneOffCheckoutDto,
   ) {
     return this.billingService.createOneOffCheckout(auth, dto);
@@ -136,14 +135,14 @@ export class BillingController {
 
   @Post('subscription/cancel')
   @UseGuards(AccessJwtGuard)
-  scheduleCancellation(@CurrentAuth() auth: AccessTokenPayload) {
+  scheduleCancellation(@CurrentAuth() auth: AuthContext) {
     return this.billingService.scheduleCancellation(auth);
   }
 
   @Post('platform/subscriptions/:subscriptionId/cancel')
   @UseGuards(AccessJwtGuard)
   schedulePlatformSubscriptionCancellation(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('subscriptionId') subscriptionId: string,
   ) {
     return this.billingService.schedulePlatformSubscriptionCancellation(

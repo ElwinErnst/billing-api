@@ -8,8 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
-import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext, CurrentAuth } from '@elwinernst/nest-auth';
 import { AuditService } from './audit.service';
 import { AuditCheckpointService } from './audit-checkpoint.service';
 
@@ -26,7 +25,7 @@ export class AuditController {
     private readonly checkpoints: AuditCheckpointService,
   ) {}
 
-  private assertAdmin(auth: AccessTokenPayload): void {
+  private assertAdmin(auth: AuthContext): void {
     const isAdmin = auth.roles.some((role) => ['OWNER', 'ADMIN'].includes(role));
     if (!isAdmin) {
       throw new ForbiddenException('Only OWNER or ADMIN can read the audit log');
@@ -36,7 +35,7 @@ export class AuditController {
   @Get('audit-events')
   @UseGuards(AccessJwtGuard)
   list(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -55,7 +54,7 @@ export class AuditController {
    */
   @Get('audit-events/verify')
   @UseGuards(AccessJwtGuard)
-  async verify(@CurrentAuth() auth: AccessTokenPayload) {
+  async verify(@CurrentAuth() auth: AuthContext) {
     this.assertAdmin(auth);
     const result = await this.checkpoints.verifyScopeAnchored(auth.tenantId);
     return {
@@ -72,7 +71,7 @@ export class AuditController {
   @Post('audit-events/checkpoint')
   @UseGuards(AccessJwtGuard)
   @HttpCode(200)
-  async checkpoint(@CurrentAuth() auth: AccessTokenPayload) {
+  async checkpoint(@CurrentAuth() auth: AuthContext) {
     this.assertAdmin(auth);
     const outcome = await this.checkpoints.createCheckpoint(auth.tenantId);
     return { outcome };

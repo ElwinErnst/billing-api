@@ -18,7 +18,7 @@ import { verifyMercadoPagoSignature } from './mercadopago-signature';
 import { resolveSubscriptionRenewal } from './subscription-renewal';
 import { hasMatchingPlatformAuthorization } from './platform-subscription-ownership';
 import { AuthDirectoryService } from '../../common/modules/auth-directory/auth-directory.service';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext } from '@elwinernst/nest-auth';
 import {
   BILLING_CATALOG,
   BillingApiAddonCode,
@@ -173,7 +173,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async createPortalSession(auth: AccessTokenPayload) {
+  async createPortalSession(auth: AuthContext) {
     this.assertOwner(auth);
 
     const customer = await this.customersRepo.findOne({
@@ -200,13 +200,13 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async createCheckoutSession(auth: AccessTokenPayload, dto: CreateCheckoutSessionDto) {
+  async createCheckoutSession(auth: AuthContext, dto: CreateCheckoutSessionDto) {
     this.assertOwner(auth);
     return this.createCheckoutSessionForOwner(auth, dto, this.tenantCheckoutOwner(auth));
   }
 
   async createPlatformCheckoutSession(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     dto: CreatePlatformCheckoutSessionDto,
   ) {
     if (auth.actorType === 'service_account') {
@@ -216,7 +216,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const authorization = await this.authDirectory.authorizePlatformSubscription({
       organizationId: dto.organizationId,
       billingAccountId: dto.billingAccountId,
-      actorUserId: auth.sub,
+      actorUserId: auth.userId,
       coveredTenantIds: dto.coveredTenantIds,
     });
     if (!hasMatchingPlatformAuthorization({
@@ -240,7 +240,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createCheckoutSessionForOwner(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     dto: CreateCheckoutSessionDto,
     owner: SubscriptionCheckoutOwner,
   ) {
@@ -330,7 +330,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
    * on the outbound webhook (phase 2). The provider token never leaves Sytadel.
    */
   async createOneOffCheckout(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     dto: CreateOneOffCheckoutDto,
   ) {
     const provider = dto.provider ?? this.resolveOneOffProvider();
@@ -386,7 +386,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createMercadoPagoOneOff(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     dto: CreateOneOffCheckoutDto,
     intent: BillingPaymentIntentEntity,
     currency: string,
@@ -484,7 +484,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async scheduleCancellation(auth: AccessTokenPayload) {
+  async scheduleCancellation(auth: AuthContext) {
     this.assertOwner(auth);
 
     const activeSubscription = await this.subscriptionsRepo.findOne({
@@ -510,7 +510,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       category: 'billing',
       action: 'SUBSCRIPTION_CANCEL_SCHEDULED',
       actorType: 'user',
-      actorId: auth.sub,
+      actorId: auth.userId,
       resourceType: 'subscription',
       resourceId: subscription.id,
       outcome: 'success',
@@ -529,7 +529,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   async schedulePlatformSubscriptionCancellation(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     subscriptionId: string,
   ) {
     if (auth.actorType === 'service_account') {
@@ -544,7 +544,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const authorization = await this.authDirectory.authorizePlatformSubscription({
       organizationId: subscription.organizationId,
       billingAccountId: subscription.billingAccountId,
-      actorUserId: auth.sub,
+      actorUserId: auth.userId,
       coveredTenantIds: subscription.coveredTenantIds ?? [],
     });
     if (!hasMatchingPlatformAuthorization(
@@ -615,7 +615,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
    * App/environment ownership derived from the caller's token. Null for
    * user/dashboard tokens (tenant-level) — those simply omit the claims.
    */
-  private ownershipFrom(auth: AccessTokenPayload): {
+  private ownershipFrom(auth: AuthContext): {
     clientAppId: string | null;
     environmentId: string | null;
   } {
@@ -625,7 +625,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private tenantCheckoutOwner(auth: AccessTokenPayload): SubscriptionCheckoutOwner {
+  private tenantCheckoutOwner(auth: AuthContext): SubscriptionCheckoutOwner {
     return {
       tenantId: auth.tenantId,
       ...this.ownershipFrom(auth),
@@ -898,7 +898,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createMockCheckoutSession(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     dto: CreateCheckoutSessionDto,
     seats: number,
     amountCents: number,
@@ -948,7 +948,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createStripeCheckoutSession(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     dto: CreateCheckoutSessionDto,
     offer: BillingCatalogOffer,
     seats: number,
@@ -1096,7 +1096,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createMercadoPagoCheckoutSession(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     dto: CreateCheckoutSessionDto,
     offer: BillingCatalogOffer,
     seats: number,
@@ -2146,7 +2146,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
    * SQL (GROUP BY) so it scales past what fits in memory. Read-only.
    */
   async getUsageByApplication(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     query: UsageReportQueryDto,
   ) {
     this.assertOwner(auth);
@@ -2260,7 +2260,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
   /** Payment intents owned by one application (most recent first). Read-only. */
   async listApplicationPayments(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     clientAppId: string,
     query: ListApplicationRecordsQueryDto,
   ) {
@@ -2295,7 +2295,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
   /** Subscriptions owned by one application (most recent first). Read-only. */
   async listApplicationSubscriptions(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     clientAppId: string,
     query: ListApplicationRecordsQueryDto,
   ) {
@@ -2538,7 +2538,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private assertOwner(auth: AccessTokenPayload) {
+  private assertOwner(auth: AuthContext) {
     if (!auth.roles.includes('OWNER')) {
       throw new ForbiddenException('Only tenant owners can manage billing');
     }

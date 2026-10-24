@@ -8,9 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext, CurrentAuth } from '@elwinernst/nest-auth';
 import { CreateMerchantAccountDto } from './dto/create-merchant-account.dto';
 import { CreateMerchantCustomerDto } from './dto/create-merchant-customer.dto';
 import { CreateMerchantPriceDto } from './dto/create-merchant-price.dto';
@@ -26,20 +25,20 @@ export class MerchantBillingController {
 
   @Post()
   createMerchant(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Body() dto: CreateMerchantAccountDto,
   ) {
     return this.merchantBilling.createMerchant(auth, dto);
   }
 
   @Get()
-  listMerchants(@CurrentAuth() auth: AccessTokenPayload) {
+  listMerchants(@CurrentAuth() auth: AuthContext) {
     return this.merchantBilling.listMerchants(auth);
   }
 
   @Post(':merchantId/products')
   createProduct(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Body() dto: CreateMerchantProductDto,
   ) {
@@ -48,7 +47,7 @@ export class MerchantBillingController {
 
   @Get(':merchantId/products')
   listProducts(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
   ) {
     return this.merchantBilling.listProducts(auth, merchantId);
@@ -56,7 +55,7 @@ export class MerchantBillingController {
 
   @Patch(':merchantId/products/:productId/archive')
   archiveProduct(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Param('productId') productId: string,
   ) {
@@ -65,7 +64,7 @@ export class MerchantBillingController {
 
   @Post(':merchantId/products/:productId/prices')
   createPrice(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Param('productId') productId: string,
     @Body() dto: CreateMerchantPriceDto,
@@ -75,7 +74,7 @@ export class MerchantBillingController {
 
   @Get(':merchantId/products/:productId/prices')
   listPrices(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Param('productId') productId: string,
   ) {
@@ -84,7 +83,7 @@ export class MerchantBillingController {
 
   @Patch(':merchantId/prices/:priceId/archive')
   archivePrice(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Param('priceId') priceId: string,
   ) {
@@ -93,7 +92,7 @@ export class MerchantBillingController {
 
   @Post(':merchantId/customers')
   createCustomer(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Body() dto: CreateMerchantCustomerDto,
   ) {
@@ -102,7 +101,7 @@ export class MerchantBillingController {
 
   @Get(':merchantId/customers')
   listCustomers(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
   ) {
     return this.merchantBilling.listCustomers(auth, merchantId);
@@ -110,7 +109,7 @@ export class MerchantBillingController {
 
   @Post(':merchantId/subscriptions')
   createSubscription(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Body() dto: CreateMerchantSubscriptionDto,
   ) {
@@ -119,7 +118,7 @@ export class MerchantBillingController {
 
   @Get(':merchantId/subscriptions')
   listSubscriptions(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
   ) {
     return this.merchantBilling.listSubscriptions(auth, merchantId);
@@ -127,7 +126,7 @@ export class MerchantBillingController {
 
   @Post(':merchantId/subscriptions/:subscriptionId/cancel')
   cancelSubscription(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('merchantId') merchantId: string,
     @Param('subscriptionId') subscriptionId: string,
   ) {
