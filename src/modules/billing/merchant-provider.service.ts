@@ -10,7 +10,7 @@ import { createHash } from 'crypto';
 import { MercadoPagoConfig, PreApproval } from 'mercadopago';
 import Stripe from 'stripe';
 import { DataSource, Repository } from 'typeorm';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext } from '@elwinernst/nest-auth';
 import { CreateMerchantProviderConnectionDto } from './dto/create-merchant-provider-connection.dto';
 import { MerchantAccountEntity } from './entities/merchant-account.entity';
 import { MerchantProviderConnectionEntity } from './entities/merchant-provider-connection.entity';
@@ -36,7 +36,7 @@ export class MerchantProviderService {
     private readonly cipher: SecretCipher,
   ) {}
 
-  async createConnection(auth: AccessTokenPayload, merchantId: string, dto: CreateMerchantProviderConnectionDto) {
+  async createConnection(auth: AuthContext, merchantId: string, dto: CreateMerchantProviderConnectionDto) {
     await this.requireMerchant(auth, merchantId);
     if (!this.cipher.enabled) {
       throw new InternalServerErrorException('Merchant provider secrets require BILLING_SECRET_ENC_KEY');
@@ -53,13 +53,13 @@ export class MerchantProviderService {
     return this.serialize(await this.connections.save(connection));
   }
 
-  async listConnections(auth: AccessTokenPayload, merchantId: string) {
+  async listConnections(auth: AuthContext, merchantId: string) {
     await this.requireMerchant(auth, merchantId);
     const rows = await this.connections.find({ where: { merchantId }, order: { createdAt: 'ASC' } });
     return rows.map((row) => this.serialize(row));
   }
 
-  async disableConnection(auth: AccessTokenPayload, merchantId: string, connectionId: string) {
+  async disableConnection(auth: AuthContext, merchantId: string, connectionId: string) {
     await this.requireMerchant(auth, merchantId);
     const connection = await this.connections.findOne({ where: { id: connectionId, merchantId } });
     if (!connection) throw new NotFoundException('Merchant provider connection not found');
@@ -139,7 +139,7 @@ export class MerchantProviderService {
     return { received: true };
   }
 
-  private async requireMerchant(auth: AccessTokenPayload, merchantId: string) {
+  private async requireMerchant(auth: AuthContext, merchantId: string) {
     if (auth.actorType === 'service_account' || !auth.roles.includes('OWNER')) {
       throw new ForbiddenException('Only tenant owners can manage merchant billing');
     }

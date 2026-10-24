@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext } from '@elwinernst/nest-auth';
 import { CreateMerchantAccountDto } from './dto/create-merchant-account.dto';
 import { CreateMerchantCustomerDto } from './dto/create-merchant-customer.dto';
 import { CreateMerchantPriceDto } from './dto/create-merchant-price.dto';
@@ -36,7 +36,7 @@ export class MerchantBillingService {
     private readonly providerConnectionsRepo: Repository<MerchantProviderConnectionEntity>,
   ) {}
 
-  async createMerchant(auth: AccessTokenPayload, dto: CreateMerchantAccountDto) {
+  async createMerchant(auth: AuthContext, dto: CreateMerchantAccountDto) {
     this.assertTenantOwner(auth);
     const merchant = await this.merchantsRepo.save(this.merchantsRepo.create({
       ownerTenantId: auth.tenantId,
@@ -46,7 +46,7 @@ export class MerchantBillingService {
     return this.serializeMerchant(merchant);
   }
 
-  async listMerchants(auth: AccessTokenPayload) {
+  async listMerchants(auth: AuthContext) {
     this.assertTenantOwner(auth);
     const merchants = await this.merchantsRepo.find({
       where: { ownerTenantId: auth.tenantId },
@@ -56,7 +56,7 @@ export class MerchantBillingService {
   }
 
   async createProduct(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     dto: CreateMerchantProductDto,
   ) {
@@ -70,7 +70,7 @@ export class MerchantBillingService {
     return this.serializeProduct(product);
   }
 
-  async listProducts(auth: AccessTokenPayload, merchantId: string) {
+  async listProducts(auth: AuthContext, merchantId: string) {
     await this.requireMerchant(auth, merchantId);
     const products = await this.productsRepo.find({
       where: { merchantId },
@@ -80,7 +80,7 @@ export class MerchantBillingService {
   }
 
   async archiveProduct(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     productId: string,
   ) {
@@ -94,7 +94,7 @@ export class MerchantBillingService {
   }
 
   async createPrice(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     productId: string,
     dto: CreateMerchantPriceDto,
@@ -116,7 +116,7 @@ export class MerchantBillingService {
   }
 
   async listPrices(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     productId: string,
   ) {
@@ -133,7 +133,7 @@ export class MerchantBillingService {
   }
 
   async archivePrice(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     priceId: string,
   ) {
@@ -147,7 +147,7 @@ export class MerchantBillingService {
   }
 
   async createCustomer(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     dto: CreateMerchantCustomerDto,
   ) {
@@ -169,7 +169,7 @@ export class MerchantBillingService {
     return this.serializeCustomer(customer);
   }
 
-  async listCustomers(auth: AccessTokenPayload, merchantId: string) {
+  async listCustomers(auth: AuthContext, merchantId: string) {
     await this.requireMerchant(auth, merchantId);
     const customers = await this.customersRepo.find({
       where: { merchantId },
@@ -179,7 +179,7 @@ export class MerchantBillingService {
   }
 
   async createSubscription(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     dto: CreateMerchantSubscriptionDto,
   ) {
@@ -225,7 +225,7 @@ export class MerchantBillingService {
     return this.serializeSubscription(subscription);
   }
 
-  async listSubscriptions(auth: AccessTokenPayload, merchantId: string) {
+  async listSubscriptions(auth: AuthContext, merchantId: string) {
     await this.requireMerchant(auth, merchantId);
     const subscriptions = await this.subscriptionsRepo.find({
       where: { merchantId },
@@ -235,7 +235,7 @@ export class MerchantBillingService {
   }
 
   async cancelSubscription(
-    auth: AccessTokenPayload,
+    auth: AuthContext,
     merchantId: string,
     subscriptionId: string,
   ) {
@@ -251,7 +251,7 @@ export class MerchantBillingService {
     return this.serializeSubscription(await this.subscriptionsRepo.save(subscription));
   }
 
-  private async requireMerchant(auth: AccessTokenPayload, merchantId: string) {
+  private async requireMerchant(auth: AuthContext, merchantId: string) {
     this.assertTenantOwner(auth);
     const merchant = await this.merchantsRepo.findOne({
       where: { id: merchantId, ownerTenantId: auth.tenantId },
@@ -263,7 +263,7 @@ export class MerchantBillingService {
     return merchant;
   }
 
-  private assertTenantOwner(auth: AccessTokenPayload) {
+  private assertTenantOwner(auth: AuthContext) {
     if (auth.actorType === 'service_account' || !auth.roles.includes('OWNER')) {
       throw new ForbiddenException('Only tenant owners can manage merchant billing');
     }

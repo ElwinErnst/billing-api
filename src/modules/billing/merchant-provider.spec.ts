@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { createHmac } from 'crypto';
 import { ForbiddenException } from '@nestjs/common';
 import { PreApproval } from 'mercadopago';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext } from '@elwinernst/nest-auth';
 import { MerchantAccountEntity } from './entities/merchant-account.entity';
 import { MerchantProviderConnectionEntity } from './entities/merchant-provider-connection.entity';
 import { MerchantProviderEventEntity } from './entities/merchant-provider-event.entity';
@@ -61,8 +61,8 @@ function harness() {
   return { service, merchants, connections, subscriptions, events };
 }
 
-const ownerA: AccessTokenPayload = { sub: 'owner-a', tenantId: 'tenant-a', roles: ['OWNER'] };
-const ownerB: AccessTokenPayload = { sub: 'owner-b', tenantId: 'tenant-b', roles: ['OWNER'] };
+const ownerA: AuthContext = { userId: 'owner-a', tenantId: 'tenant-a', roles: ['OWNER'] };
+const ownerB: AuthContext = { userId: 'owner-b', tenantId: 'tenant-b', roles: ['OWNER'] };
 
 function mpSigned(dataId: string, requestId: string) {
   const ts = '1700000000';

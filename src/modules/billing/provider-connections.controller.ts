@@ -8,9 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentAuth } from '../../common/decorators/current-auth.decorator';
 import { AccessJwtGuard } from '../../common/guards/access-jwt.guard';
-import { AccessTokenPayload } from '../auth/types/access-token-payload.type';
+import { AuthContext, CurrentAuth } from '@elwinernst/nest-auth';
 import { ProviderConnectionService } from './provider-connection.service';
 import { CreateProviderConnectionDto } from './dto/create-provider-connection.dto';
 
@@ -25,21 +24,21 @@ import { CreateProviderConnectionDto } from './dto/create-provider-connection.dt
 export class ProviderConnectionsController {
   constructor(private readonly connections: ProviderConnectionService) {}
 
-  private assertOwner(auth: AccessTokenPayload) {
+  private assertOwner(auth: AuthContext) {
     if (!auth.roles.includes('OWNER')) {
       throw new ForbiddenException('Only tenant owners can manage billing');
     }
   }
 
   @Get()
-  list(@CurrentAuth() auth: AccessTokenPayload) {
+  list(@CurrentAuth() auth: AuthContext) {
     this.assertOwner(auth);
     return this.connections.list(auth.tenantId);
   }
 
   @Post()
   create(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Body() dto: CreateProviderConnectionDto,
   ) {
     this.assertOwner(auth);
@@ -48,7 +47,7 @@ export class ProviderConnectionsController {
 
   @Post(':id/disable')
   disable(
-    @CurrentAuth() auth: AccessTokenPayload,
+    @CurrentAuth() auth: AuthContext,
     @Param('id') id: string,
   ) {
     this.assertOwner(auth);

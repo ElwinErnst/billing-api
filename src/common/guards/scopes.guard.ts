@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { REQUIRED_SCOPES_KEY } from '../decorators/require-scopes.decorator';
-import { AccessTokenPayload } from '../../modules/auth/types/access-token-payload.type';
+import { AuthContext } from '@elwinernst/nest-auth';
 
 /**
  * Enforces `@RequireScopes(...)` for service-account (API-key) callers.
@@ -32,7 +32,7 @@ export class ScopesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<{
-      user?: AccessTokenPayload;
+      user?: AuthContext;
     }>();
     const auth = request.user;
 

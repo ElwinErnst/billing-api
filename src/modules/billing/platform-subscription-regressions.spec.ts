@@ -6,7 +6,7 @@ import { BillingCustomerEntity } from './entities/billing-customer.entity';
 import { BillingPeriodCloseEntity } from './entities/billing-period-close.entity';
 import { BillingSubscriptionEntity } from './entities/billing-subscription.entity';
 
-const auth = { sub: 'user-1', tenantId: 'tenant-1', roles: ['OWNER'] } as const;
+const auth = { userId: 'user-1', tenantId: 'tenant-1', roles: ['OWNER'] } as const;
 const dto = {
   industry: 'GENERAL' as const,
   tier: 'BASE' as const,
